@@ -1,0 +1,36 @@
+generators: 4
+hypotheses_per_generator: 3
+top_k_after_review: 6
+evolution_rounds: 2
+children_per_selected_hypothesis: 2
+final_top_k: 3
+max_llm_calls: 80
+max_parallel_agents: 4
+literature:
+  enabled: false
+  search_providers:
+    - mock
+  metadata_resolvers:
+    - mock
+  full_text_locators:
+    - mock
+  max_results_per_provider: 10
+  max_total_results: 20
+  request_timeout_seconds: 20
+  max_retries: 3
+  cache_enabled: true
+  cache_ttl_hours: 168
+  allow_live_network: false
+  force_refresh: false
+  cache_dir: .coscientist_cache/provider_responses
+  user_agent: coscientist-mvp/0.1
+ranking_weights:
+  correctness: 1.2
+  novelty: 1.0
+  testability: 1.2
+  explanatory_power: 1.0
+  feasibility: 1.0
+  discriminative_power: 1.1
+  evidence_quality: 1.0
+  impact: 1.0
+  parsimony: 0.8

@@ -1,0 +1,24 @@
+id: demo-superconductivity
+title: Room-temperature superconductivity screening
+question: What testable mechanisms could guide discovery of higher-temperature superconductors in pressure-tunable hydride-like materials?
+background: >
+  This mock demonstration explores possible mechanisms for superconductivity in
+  hydrogen-rich materials. Outputs are synthetic examples for workflow testing,
+  not literature-backed scientific claims.
+constraints:
+  - Prefer hypotheses testable with laboratory spectroscopy or transport measurements.
+  - Avoid requiring unavailable megascale facilities.
+desired_attributes:
+  - Mechanistic specificity
+  - Clear falsification criteria
+  - Experiments that discriminate among hypotheses
+evaluation_criteria:
+  - Scientific consistency
+  - Novelty
+  - Testability
+  - Feasibility
+  - Discriminative predictions
+prohibited_methods:
+  - Human clinical experimentation
+  - Unsafe chemical synthesis suggestions
+max_rounds: 2
