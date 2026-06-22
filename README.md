@@ -70,6 +70,38 @@ python -m coscientist.cli run examples/demo_goal.yaml --provider mock
 python -m coscientist.cli search-literature "linear magnetoresistance" --providers mock
 ```
 
+## V1 Grounded Pilot Workflow
+
+V1 adds a reproducible pilot-research and evaluation loop on top of the MVP. The MVP generates, reviews, ranks, evolves, and reports hypotheses. V1 adds a persistent project specification, fixture corpus, structured claim-level evidence links, deterministic citation/evidence verification, per-round evaluation, baseline-versus-evolved comparison, and a human-review package.
+
+Run the deterministic offline pilot:
+
+```bash
+python -m coscientist.cli project-show research-projects/interdisciplinary_fixture/project.yaml
+python -m coscientist.cli run-project research-projects/interdisciplinary_fixture/project.yaml --run-id urban-heat-pilot
+python -m coscientist.cli validate-artifacts runs/urban-heat-pilot
+python -m coscientist.cli verify-evidence runs/urban-heat-pilot
+python -m coscientist.cli evaluate-run runs/urban-heat-pilot
+python -m coscientist.cli compare-rounds runs/urban-heat-pilot
+python -m coscientist.cli build-review-package runs/urban-heat-pilot
+```
+
+Important V1 artifacts:
+
+- `run_manifest.json`: run mode, schema versions, and artifact list.
+- `project_snapshot.json`: immutable project spec snapshot.
+- `corpus.jsonl` and `normalized_papers.jsonl`: fixture paper corpus.
+- `hypotheses_initial.jsonl`, `evolution_round_1.jsonl`, `evolution_round_2.jsonl`, `hypotheses_final.json`: evidence-linked hypotheses.
+- `evidence_verification.jsonl`: claim-level verification records.
+- `evaluation_by_round.json`: per-round rubric records.
+- `round_comparison.json`: initial-versus-final comparison.
+- `report.md`: pilot report.
+- `human_review.md`: researcher-facing review package.
+
+Interpret V1 scores as workflow diagnostics, not scientific truth. The evaluator is deterministic and useful for regression testing, but it can prefer its own rubric. Evidence verification checks fixture references, duplicate IDs, excerpts, unsupported claims, conflicts, and overstatement; it does not prove semantic truth.
+
+The included pilot corpus is intentionally small and incomplete. Add another pilot by creating a project directory with `project.yaml`, `corpus.jsonl`, `rubric.yaml`, and a README, then run `run-project` against that spec.
+
 ## Live Network Opt-In
 
 Live network access cannot happen accidentally. Any live provider command must include `--live-network`.
@@ -175,6 +207,8 @@ Live tests are intentionally small and should not assume stable result ordering.
 
 - Passage-level document retrieval
 - Citation verification against exact passages
+- Richer V1/V2 semantic evidence verification
+- Live-provider V1 project execution
 - Proximity clustering
 - Meta-review
 - Benchmark evaluation

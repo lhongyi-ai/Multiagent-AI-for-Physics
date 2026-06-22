@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import argparse
 import asyncio
+import json
 from pathlib import Path
 
 from pydantic import ValidationError
@@ -9,9 +10,15 @@ from pydantic import ValidationError
 from coscientist.config import load_config, load_research_goal
 from coscientist.literature.pipeline import build_literature_pipeline
 from coscientist.orchestration.workflow import run_workflow
+from coscientist.pilot.artifacts import read_json, read_jsonl, validate_v1_artifacts
+from coscientist.pilot.evidence import verify_hypothesis_evidence
+from coscientist.pilot.project_io import load_fixture_corpus, load_project_spec
+from coscientist.pilot.reports import build_human_review_package
+from coscientist.pilot.runner import CompletedRunError, run_pilot_project
 from coscientist.providers.base import ProviderError
 from coscientist.providers.mock import MockProvider
 from coscientist.providers.openai_compatible import OpenAICompatibleProvider
+from coscientist.schemas.hypothesis import Hypothesis
 from coscientist.schemas.literature import ExternalIdentifier, MetadataResolveRequest, Paper, SearchQuery
 from coscientist.storage.local_store import LocalStore
 
@@ -53,6 +60,32 @@ def build_parser() -> argparse.ArgumentParser:
     locate_parser.add_argument("--providers", nargs="+", default=["mock"])
     locate_parser.add_argument("--config", default="config/default.yaml")
     locate_parser.add_argument("--live-network", action="store_true")
+
+    project_show = subcommands.add_parser("project-show", help="Validate and display a research project specification.")
+    project_show.add_argument("project", help="Path to a V1 project YAML or JSON file.")
+
+    run_project = subcommands.add_parser("run-project", help="Run a deterministic offline V1 pilot project.")
+    run_project.add_argument("project", help="Path to a V1 project YAML or JSON file.")
+    run_project.add_argument("--runs-dir", default="runs")
+    run_project.add_argument("--run-id", default=None)
+    run_project.add_argument("--force", action="store_true", help="Overwrite a completed pilot run directory.")
+    run_project.add_argument("--live-network", action="store_true", help="Reserved for explicit future live-provider execution.")
+    run_project.add_argument("--live-model", action="store_true", help="Reserved for explicit future live-model execution.")
+
+    verify = subcommands.add_parser("verify-evidence", help="Verify V1 evidence links for a run directory.")
+    verify.add_argument("run_dir")
+
+    evaluate = subcommands.add_parser("evaluate-run", help="Inspect V1 evaluation artifacts for a run directory.")
+    evaluate.add_argument("run_dir")
+
+    compare = subcommands.add_parser("compare-rounds", help="Print baseline-versus-final V1 round comparison.")
+    compare.add_argument("run_dir")
+
+    review = subcommands.add_parser("build-review-package", help="Regenerate or print the V1 human-review package path.")
+    review.add_argument("run_dir")
+
+    validate_artifacts = subcommands.add_parser("validate-artifacts", help="Validate required V1 run artifacts.")
+    validate_artifacts.add_argument("run_dir")
     return parser
 
 
@@ -153,6 +186,93 @@ async def _locate_full_text(args: argparse.Namespace) -> int:
     return 0
 
 
+async def _run_project(args: argparse.Namespace) -> int:
+    run_dir = await run_pilot_project(
+        args.project,
+        runs_dir=args.runs_dir,
+        run_id=args.run_id,
+        live_network=args.live_network,
+        live_model=args.live_model,
+        force=args.force,
+    )
+    print(f"Pilot run complete: {Path(run_dir).resolve()}")
+    print(f"Report: {(Path(run_dir) / 'report.md').resolve()}")
+    print(f"Human review: {(Path(run_dir) / 'human_review.md').resolve()}")
+    return 0
+
+
+def _project_show(args: argparse.Namespace) -> int:
+    project = load_project_spec(args.project)
+    print(project.model_dump_json(indent=2))
+    return 0
+
+
+def _verify_evidence(args: argparse.Namespace) -> int:
+    run_dir = Path(args.run_dir)
+    project = load_project_spec(run_dir / "project_snapshot.json")
+    corpus = [Paper.model_validate(item) for item in read_jsonl(run_dir / "corpus.jsonl")]
+    hypotheses = [Hypothesis.model_validate(item) for item in read_json(run_dir / "hypotheses_final.json")]
+    records = verify_hypothesis_evidence(hypotheses, corpus)
+    counts: dict[str, int] = {}
+    for record in records:
+        counts[record.status] = counts.get(record.status, 0) + 1
+    print(f"Project: {project.project_id}")
+    print(f"Evidence verification records: {len(records)}")
+    print(counts)
+    return 0
+
+
+def _evaluate_run(args: argparse.Namespace) -> int:
+    data = read_json(Path(args.run_dir) / "evaluation_by_round.json")
+    print(f"Evaluation rounds: {len(data)}")
+    for item in data:
+        print(f"{item['round_label']}: {item['mean_scores']}")
+    return 0
+
+
+def _compare_rounds(args: argparse.Namespace) -> int:
+    comparison = read_json(Path(args.run_dir) / "round_comparison.json")
+    print("Score changes by dimension:")
+    for dimension, value in comparison["score_changes_by_dimension"].items():
+        print(f"- {dimension}: {value:+.3f}")
+    print(f"Citation coverage: {comparison['citation_coverage']}")
+    print(comparison["evaluator_self_preference_note"])
+    return 0
+
+
+def _build_review_package(args: argparse.Namespace) -> int:
+    run_dir = Path(args.run_dir)
+    project = load_project_spec(run_dir / "project_snapshot.json")
+    corpus = [Paper.model_validate(item) for item in read_jsonl(run_dir / "corpus.jsonl")]
+    final_hypotheses = [Hypothesis.model_validate(item) for item in read_json(run_dir / "hypotheses_final.json")]
+    comparison = read_json(run_dir / "round_comparison.json")
+    records = read_jsonl(run_dir / "evidence_verification.jsonl")
+    from coscientist.schemas.evaluation import RoundComparison
+    from coscientist.schemas.evidence import EvidenceVerificationRecord
+
+    text = build_human_review_package(
+        project,
+        corpus,
+        final_hypotheses,
+        RoundComparison.model_validate_json(json.dumps(comparison)),
+        [EvidenceVerificationRecord.model_validate_json(json.dumps(item)) for item in records],
+    )
+    output = run_dir / "human_review.md"
+    output.write_text(text, encoding="utf-8")
+    print(f"Human review package: {output.resolve()}")
+    return 0
+
+
+def _validate_artifacts(args: argparse.Namespace) -> int:
+    errors = validate_v1_artifacts(args.run_dir)
+    if errors:
+        for error in errors:
+            print(f"Error: {error}")
+        return 2
+    print(f"Valid V1 artifacts: {Path(args.run_dir).resolve()}")
+    return 0
+
+
 def _guard_live(provider_names: list[str], live_network: bool) -> None:
     live_providers = {"openalex", "crossref", "unpaywall", "arxiv"}
     if any(name in live_providers for name in provider_names) and not live_network:
@@ -175,7 +295,21 @@ def main(argv: list[str] | None = None) -> int:
             return asyncio.run(_resolve_doi(args))
         if args.command == "locate-full-text":
             return asyncio.run(_locate_full_text(args))
-    except (ValidationError, ValueError, ProviderError) as exc:
+        if args.command == "project-show":
+            return _project_show(args)
+        if args.command == "run-project":
+            return asyncio.run(_run_project(args))
+        if args.command == "verify-evidence":
+            return _verify_evidence(args)
+        if args.command == "evaluate-run":
+            return _evaluate_run(args)
+        if args.command == "compare-rounds":
+            return _compare_rounds(args)
+        if args.command == "build-review-package":
+            return _build_review_package(args)
+        if args.command == "validate-artifacts":
+            return _validate_artifacts(args)
+    except (ValidationError, ValueError, ProviderError, CompletedRunError) as exc:
         print(f"Error: {exc}")
         return 2
     return 1

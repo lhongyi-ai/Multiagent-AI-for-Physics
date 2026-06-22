@@ -1,0 +1,42 @@
+project_id: urban-heat-island-mitigation
+title: Urban heat-island mitigation mechanisms
+research_question: Which mechanisms most plausibly explain neighborhood-scale cooling from urban heat-island mitigation strategies, and what observations would discriminate among them?
+task_type: explanation
+background: >
+  Urban heat-island interventions such as tree canopy, reflective surfaces, and
+  changes to impervious cover can affect surface and air temperature through
+  different physical and social mechanisms. This pilot is a safe fixture for
+  testing grounded multi-agent hypothesis generation and evaluation.
+scope: >
+  Focus on neighborhood-scale mechanisms and discriminating observations rather
+  than city-wide policy optimization.
+known_observations:
+  - Tree canopy can reduce local temperatures through shading and evapotranspiration.
+  - Reflective roofs can reduce surface heating but may have context-dependent pedestrian effects.
+  - Impervious surfaces and low nighttime radiative cooling can sustain heat exposure.
+constraints:
+  - Use only offline fixture evidence by default.
+  - Do not recommend hazardous interventions.
+  - Treat the corpus as incomplete.
+excluded_directions:
+  - Proprietary sensor data.
+  - Medical intervention studies.
+available_evidence:
+  - corpus.jsonl
+desired_output: A small set of testable, evidence-linked hypotheses with falsification plans.
+evaluation_criteria:
+  - relevance
+  - evidence_grounding
+  - testability
+  - falsifiability
+  - uncertainty_calibration
+validation_constraints:
+  - Must distinguish source observations from system inferences.
+  - Must not claim the fixture proves any mechanism.
+maximum_literature_budget: 5
+maximum_model_call_budget: 80
+maximum_evolution_rounds: 2
+literature_fixture_path: corpus.jsonl
+rubric_path: rubric.yaml
+created_at: 2026-06-22T00:00:00+00:00
+schema_version: v1

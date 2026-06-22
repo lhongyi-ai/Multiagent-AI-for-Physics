@@ -434,6 +434,7 @@ This workflow is expected to change.
 | Date | Change |
 | --- | --- |
 | 2026-06-22 | Initial workflow document created. |
+| 2026-06-22 | Added V1 implementation experience: persistent pilot projects should preserve project snapshots, claim-level evidence links, per-round evaluations, round comparisons, and human-review artifacts. |
 
 ## 18. Initial Adoption Plan
 
@@ -461,4 +462,3 @@ Do not claim the repository already supports all phases. The current repository 
 - What user interface should support human approval gates?
 - How should cost, compute, and time limits be enforced?
 - How should sensitive data, export controls, and dual-use concerns be handled?
-

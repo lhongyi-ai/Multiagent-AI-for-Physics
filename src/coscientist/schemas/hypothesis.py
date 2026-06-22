@@ -4,6 +4,8 @@ from typing import Literal
 
 from pydantic import BaseModel, ConfigDict, Field
 
+from coscientist.schemas.evidence import ClaimEvidenceLink
+
 
 HypothesisStatus = Literal["active", "repaired", "branched", "combined", "rejected", "finalist"]
 GenerationStrategy = Literal["mechanistic", "analogy", "contrarian", "minimal-explanation", "repair", "branch", "combine"]
@@ -29,6 +31,7 @@ class Hypothesis(BaseModel):
     version: int = Field(ge=1)
     status: HypothesisStatus = "active"
     change_summary: str | None = None
+    evidence_links: list[ClaimEvidenceLink] = Field(default_factory=list)
 
 
 class HypothesisBatch(BaseModel):
