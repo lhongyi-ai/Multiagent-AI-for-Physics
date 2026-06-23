@@ -17,6 +17,9 @@ REQUIRED_V1_ARTIFACTS = [
     "literature_search_events.jsonl",
     "provider_status.json",
     "provider_usage.json",
+    "model_calls.jsonl",
+    "model_usage.json",
+    "model_provider_status.json",
     "raw_openalex_records.jsonl",
     "raw_arxiv_records.jsonl",
     "crossref_enrichment.jsonl",
@@ -72,6 +75,12 @@ def validate_v1_artifacts(run_dir: str | Path) -> list[str]:
         else:
             if manifest.get("artifact_schema_version") != "v1":
                 errors.append("incompatible artifact_schema_version")
+            if not manifest.get("live_model_enabled", False):
+                calls_path = path / "model_calls.jsonl"
+                if calls_path.exists() and calls_path.read_text(encoding="utf-8").strip():
+                    errors.append("manifest disables live model but model_calls.jsonl is non-empty")
+            if manifest.get("live_model_enabled", False) and manifest.get("model_mode") != "live":
+                errors.append("manifest enables live model but model_mode is not live")
             for artifact in manifest.get("artifacts", []):
                 if not (path / artifact).exists():
                     errors.append(f"manifest references missing artifact: {artifact}")

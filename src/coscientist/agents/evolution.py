@@ -12,7 +12,15 @@ class EvolutionAgent(Agent):
         batch = await self.provider.generate_structured(
             prompt,
             HypothesisBatch,
-            {"mode": "repair", "strategy": "repair", "parent": hypothesis, "count": 1, "round_number": round_number},
+            {
+                "mode": "repair",
+                "strategy": "repair",
+                "parent": hypothesis,
+                "count": 1,
+                "round_number": round_number,
+                "agent_role": "evolution",
+                "workflow_stage": f"repair_round_{round_number}",
+            },
         )
         return batch.hypotheses
 
@@ -21,7 +29,15 @@ class EvolutionAgent(Agent):
         batch = await self.provider.generate_structured(
             prompt,
             HypothesisBatch,
-            {"mode": "branch", "strategy": "branch", "parent": hypothesis, "count": 1, "round_number": round_number},
+            {
+                "mode": "branch",
+                "strategy": "branch",
+                "parent": hypothesis,
+                "count": 1,
+                "round_number": round_number,
+                "agent_role": "evolution",
+                "workflow_stage": f"branch_round_{round_number}",
+            },
         )
         return batch.hypotheses
 
@@ -32,7 +48,15 @@ class EvolutionAgent(Agent):
         batch = await self.provider.generate_structured(
             prompt,
             HypothesisBatch,
-            {"mode": "combine", "strategy": "combine", "parents": parents, "count": count, "round_number": round_number},
+            {
+                "mode": "combine",
+                "strategy": "combine",
+                "parents": parents,
+                "count": count,
+                "round_number": round_number,
+                "agent_role": "evolution",
+                "workflow_stage": f"combine_round_{round_number}",
+            },
         )
         return batch.hypotheses
 

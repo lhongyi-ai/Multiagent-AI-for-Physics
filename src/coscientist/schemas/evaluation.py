@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from datetime import datetime
-from typing import Literal
+from typing import Any, Literal
 
 from pydantic import BaseModel, ConfigDict, Field
 
@@ -63,7 +63,7 @@ class RoundComparison(BaseModel):
 
 
 class RunManifest(BaseModel):
-    model_config = ConfigDict(extra="forbid", strict=True)
+    model_config = ConfigDict(extra="forbid", strict=True, protected_namespaces=())
 
     run_id: str = Field(min_length=1)
     project_id: str = Field(min_length=1)
@@ -71,6 +71,18 @@ class RunManifest(BaseModel):
     offline_mode: bool = True
     live_network_enabled: bool = False
     live_model_enabled: bool = False
+    model_mode: str = "mock"
+    model_provider: str = "mock"
+    sanitized_model_base_url: str | None = None
+    requested_model: str | None = None
+    returned_models: list[str] = Field(default_factory=list)
+    literature_mode: str = "fixture"
+    model_call_budget: int | None = None
+    model_usage: dict[str, Any] = Field(default_factory=dict)
+    provider_failures: int = 0
+    structured_output_failures: int = 0
+    repair_attempts: int = 0
+    run_status: str = "complete"
     project_version: str = "v1"
     rubric_version: str = "pilot-v1"
     artifact_schema_version: str = "v1"

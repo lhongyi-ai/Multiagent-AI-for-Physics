@@ -13,6 +13,7 @@ from coscientist.agents.supervisor import BudgetExhausted, Supervisor
 from coscientist.config import DEFAULT_STRATEGIES, WorkflowConfig
 from coscientist.literature.pipeline import LiteratureAcquisitionResult, build_literature_pipeline, no_literature_result
 from coscientist.providers.base import StructuredLLMProvider
+from coscientist.providers.usage import summarize_model_usage
 from coscientist.reporting.markdown_report import build_markdown_report
 from coscientist.schemas.hypothesis import Hypothesis
 from coscientist.schemas.ranking import HypothesisRanking
@@ -98,6 +99,12 @@ class CoScientistWorkflow:
         report = build_markdown_report(goal, finalists, final_rankings, state, literature_result)
         self.store.write_text(run_id, "final_report.md", report)
         self.store.write_json(run_id, "all_hypotheses.json", list(all_hypotheses.values()))
+        self.store.write_jsonl(run_id, "model_calls.jsonl", list(getattr(self.provider, "call_records", [])))
+        self.store.write_json(
+            run_id,
+            "model_usage.json",
+            summarize_model_usage(self.provider.name, "live" if self.provider.name != "mock" else "mock", list(getattr(self.provider, "call_records", []))),
+        )
         self._phase(state, "complete", self.config.evolution_rounds, [h.id for h in finalists])
         return WorkflowResult(run_id, self.store.run_dir(run_id), finalists, state)
 

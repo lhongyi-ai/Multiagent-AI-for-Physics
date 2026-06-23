@@ -13,6 +13,7 @@ from coscientist.literature.pipeline import build_literature_pipeline
 from coscientist.orchestration.workflow import run_workflow
 from coscientist.pilot.artifacts import read_json, read_jsonl, validate_v1_artifacts
 from coscientist.pilot.evidence import verify_hypothesis_evidence
+from coscientist.pilot.model_comparison import compare_model_runs
 from coscientist.pilot.project_io import load_fixture_corpus, load_project_spec
 from coscientist.pilot.reports import build_human_review_package
 from coscientist.pilot.runner import CompletedRunError, run_pilot_project
@@ -31,6 +32,7 @@ def build_parser() -> argparse.ArgumentParser:
     run_parser = subcommands.add_parser("run", help="Run the co-scientist MVP workflow.")
     run_parser.add_argument("goal", help="Path to a research goal YAML file.")
     run_parser.add_argument("--provider", choices=["mock", "openai"], default="mock")
+    run_parser.add_argument("--live-model", action="store_true", help="Required for --provider openai; never inferred from environment variables.")
     run_parser.add_argument("--config", default="config/default.yaml")
     run_parser.add_argument("--runs-dir", default="runs")
     run_parser.add_argument("--run-id", default=None)
@@ -67,6 +69,7 @@ def build_parser() -> argparse.ArgumentParser:
 
     run_project = subcommands.add_parser("run-project", help="Run a V1 pilot project with deterministic model execution.")
     run_project.add_argument("project", help="Path to a V1 project YAML or JSON file.")
+    run_project.add_argument("--provider", choices=["mock", "openai"], default="mock", help="Model provider. openai requires --live-model.")
     run_project.add_argument("--runs-dir", default="runs")
     run_project.add_argument("--run-id", default=None)
     run_project.add_argument("--force", action="store_true", help="Overwrite a completed pilot run directory.")
@@ -74,14 +77,18 @@ def build_parser() -> argparse.ArgumentParser:
     run_project.add_argument("--search-providers", nargs="+", default=None)
     run_project.add_argument("--enrichment-providers", nargs="+", default=None)
     run_project.add_argument("--max-literature-results", type=int, default=None)
+    run_project.add_argument("--max-model-calls", type=int, default=None)
+    run_project.add_argument("--max-evolution-rounds", type=int, default=None)
     run_project.add_argument("--corpus", default=None, help="Existing normalized corpus JSONL path.")
     run_project.add_argument("--acquire-literature-only", action="store_true")
+    run_project.add_argument("--smoke", action="store_true", help="Minimal live-model-compatible run: one generator, one hypothesis, no evolution.")
     run_project.add_argument("--dry-run", action="store_true", help="Plan literature acquisition without network calls.")
     run_project.add_argument("--live-network", action="store_true", help="Explicitly allow live scholarly provider HTTP calls.")
-    run_project.add_argument("--live-model", action="store_true", help="Rejected for V1: run-project uses only the deterministic mock model.")
+    run_project.add_argument("--live-model", action="store_true", help="Explicitly allow OpenAI-compatible live model calls.")
 
     acquire_lit = subcommands.add_parser("acquire-literature", help="Acquire or plan a project literature corpus.")
     acquire_lit.add_argument("project", help="Path to a V1 project YAML or JSON file.")
+    acquire_lit.add_argument("--provider", choices=["mock", "openai"], default="mock")
     acquire_lit.add_argument("--runs-dir", default="runs")
     acquire_lit.add_argument("--run-id", default=None)
     acquire_lit.add_argument("--force", action="store_true", help="Overwrite a completed acquisition run directory.")
@@ -107,6 +114,11 @@ def build_parser() -> argparse.ArgumentParser:
 
     validate_artifacts = subcommands.add_parser("validate-artifacts", help="Validate required V1 run artifacts.")
     validate_artifacts.add_argument("run_dir")
+
+    compare_models = subcommands.add_parser("compare-model-runs", help="Compare a mock V1 run with a live-model candidate run.")
+    compare_models.add_argument("mock_run_dir")
+    compare_models.add_argument("candidate_run_dir")
+    compare_models.add_argument("--output-dir", default=None)
     return parser
 
 
@@ -119,6 +131,8 @@ def make_provider(name: str):
 
 
 async def _run(args: argparse.Namespace) -> int:
+    if args.provider == "openai" and not args.live_model:
+        raise ValueError("--provider openai requires explicit --live-model.")
     config = load_config(args.config)
     literature = config.literature.model_copy(update={
         "enabled": bool(args.literature_providers or args.metadata_resolver or args.full_text_locators),
@@ -214,12 +228,16 @@ async def _run_project(args: argparse.Namespace) -> int:
         run_id=args.run_id,
         live_network=args.live_network,
         live_model=args.live_model,
+        provider_name=args.provider,
         literature_mode=args.literature_mode,
         search_providers=args.search_providers,
         enrichment_providers=args.enrichment_providers,
         max_literature_results=args.max_literature_results,
+        max_model_calls=args.max_model_calls,
+        max_evolution_rounds=args.max_evolution_rounds,
         corpus_path=args.corpus,
         acquire_literature_only=args.acquire_literature_only,
+        smoke=args.smoke,
         dry_run=args.dry_run,
         force=args.force,
     )
@@ -240,6 +258,7 @@ async def _acquire_literature(args: argparse.Namespace) -> int:
         run_id=args.run_id,
         live_network=args.live_network,
         live_model=False,
+        provider_name=args.provider,
         literature_mode=args.literature_mode,
         search_providers=args.search_providers,
         enrichment_providers=args.enrichment_providers,
@@ -327,6 +346,13 @@ def _validate_artifacts(args: argparse.Namespace) -> int:
     return 0
 
 
+def _compare_model_runs(args: argparse.Namespace) -> int:
+    output = compare_model_runs(args.mock_run_dir, args.candidate_run_dir, args.output_dir)
+    print(f"Model run comparison: {output.resolve()}")
+    print(f"Markdown summary: {(output.parent / 'model_run_comparison.md').resolve()}")
+    return 0
+
+
 def _guard_live(provider_names: list[str], live_network: bool) -> None:
     live_providers = {"openalex", "crossref", "unpaywall", "arxiv"}
     if any(name in live_providers for name in provider_names) and not live_network:
@@ -365,6 +391,8 @@ def main(argv: list[str] | None = None) -> int:
             return _build_review_package(args)
         if args.command == "validate-artifacts":
             return _validate_artifacts(args)
+        if args.command == "compare-model-runs":
+            return _compare_model_runs(args)
     except (ValidationError, ValueError, ProviderError, CompletedRunError, NetworkDisabledError) as exc:
         print(f"Error: {exc}")
         return 2

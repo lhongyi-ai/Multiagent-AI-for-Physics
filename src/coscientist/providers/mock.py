@@ -16,6 +16,9 @@ T = TypeVar("T", bound=BaseModel)
 class MockProvider(StructuredLLMProvider):
     name = "mock"
 
+    def __init__(self) -> None:
+        self.call_records = []
+
     async def generate_structured(
         self,
         prompt: str,

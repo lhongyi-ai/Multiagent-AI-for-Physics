@@ -17,6 +17,7 @@ from coscientist.schemas.literature import (
     RetrievedDocument,
     SearchQuery,
 )
+from coscientist.schemas.model_provider import ModelCallRecord, ModelProviderStatus, ModelUsage, ModelUsageSummary
 from coscientist.schemas.ranking import HypothesisRanking, PairwiseBatch, PairwiseComparison, RankingBatch
 from coscientist.schemas.research_goal import ResearchGoal
 from coscientist.schemas.project import ResearchProjectSpec
@@ -50,6 +51,10 @@ __all__ = [
     "MetadataFieldProvenance",
     "MetadataResolution",
     "MetadataResolveRequest",
+    "ModelCallRecord",
+    "ModelProviderStatus",
+    "ModelUsage",
+    "ModelUsageSummary",
     "Paper",
     "PaperAuthor",
     "PairwiseBatch",

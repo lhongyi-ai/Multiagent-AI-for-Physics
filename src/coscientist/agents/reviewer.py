@@ -11,5 +11,9 @@ class ReviewerAgent(Agent):
         if not hypotheses:
             return []
         prompt = "\n".join(review_prompt(hypothesis) for hypothesis in hypotheses)
-        batch = await self.provider.generate_structured(prompt, ReviewBatch, {"hypotheses": hypotheses})
+        batch = await self.provider.generate_structured(prompt, ReviewBatch, {
+            "hypotheses": hypotheses,
+            "agent_role": "reviewer",
+            "workflow_stage": "adversarial_review",
+        })
         return batch.reviews

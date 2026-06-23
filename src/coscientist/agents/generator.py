@@ -17,6 +17,8 @@ class GeneratorAgent(Agent):
                 "goal_id": goal.id,
                 "strategy": strategy,
                 "count": count,
+                "agent_role": "generator",
+                "workflow_stage": f"initial_generation:{strategy}",
             },
         )
         return batch.hypotheses

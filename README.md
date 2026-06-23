@@ -137,9 +137,14 @@ Interpret V1 scores as workflow diagnostics, not scientific truth. The evaluator
 
 The included pilot corpus is intentionally small and incomplete. Add another pilot by creating a project directory with `project.yaml`, `corpus.jsonl`, `rubric.yaml`, and a README, then run `run-project` against that spec.
 
-## Live Network Opt-In
+## Live Network And Model Opt-In
 
-Live network access cannot happen accidentally. Any live provider command must include `--live-network`.
+Live network access cannot happen accidentally. Literature APIs and live LLMs use separate permissions.
+
+- Literature APIs require `--live-network`.
+- OpenAI-compatible model calls require `--provider openai --live-model`.
+- Selecting `--provider openai` alone is rejected.
+- API key presence alone never triggers a live model call.
 
 Environment variables:
 
@@ -147,7 +152,8 @@ Environment variables:
 - `CROSSREF_MAILTO`: optional polite Crossref contact email.
 - `UNPAYWALL_EMAIL`: required for live Unpaywall mode.
 - `COSCIENTIST_USER_AGENT`: user agent for provider requests.
-- `OPENAI_API_KEY`, `OPENAI_MODEL`, `OPENAI_BASE_URL`: only needed when intentionally using the OpenAI-compatible LLM provider.
+- `OPENAI_API_KEY`, `OPENAI_MODEL`, `OPENAI_BASE_URL`: required only when intentionally using the OpenAI-compatible LLM provider.
+- `OPENROUTER_APP_NAME`, `OPENROUTER_SITE_URL`: optional descriptive OpenRouter headers.
 
 Examples:
 
@@ -177,6 +183,73 @@ Provider-only commands do not require an LLM API key.
 
 For V1 project runs, use `acquire-literature --dry-run` first to inspect the query plan and budgets without network calls. Live project acquisition is bounded by `max_queries`, `max_results_per_query`, `max_total_results`, `max_total_requests`, and `max_requests_per_provider` in the project spec.
 
+## V1.5A Live Model Runs
+
+OpenRouter works through the OpenAI-compatible provider:
+
+```dotenv
+OPENAI_API_KEY=
+OPENAI_BASE_URL=https://openrouter.ai/api/v1
+OPENAI_MODEL=
+OPENROUTER_APP_NAME=Multiagent AI Co-Scientist
+OPENROUTER_SITE_URL=
+```
+
+Dry-run without model or literature calls:
+
+```bash
+python -m coscientist.cli run-project \
+  research-projects/code_assistant_fixture/project.yaml \
+  --provider openai \
+  --live-model \
+  --literature-mode fixture \
+  --dry-run \
+  --run-id code-assistant-live-dry-run
+```
+
+Connectivity smoke test, after explicit human approval:
+
+```bash
+python -m coscientist.cli run-project \
+  research-projects/code_assistant_fixture/project.yaml \
+  --provider openai \
+  --live-model \
+  --literature-mode fixture \
+  --smoke \
+  --run-id code-assistant-live-smoke
+```
+
+Mini live reasoning pilot, after smoke succeeds:
+
+```bash
+python -m coscientist.cli run-project \
+  research-projects/code_assistant_fixture/project.yaml \
+  --provider openai \
+  --live-model \
+  --literature-mode fixture \
+  --max-model-calls 12 \
+  --max-evolution-rounds 1 \
+  --run-id code-assistant-live-mini
+```
+
+Do not combine first-time live literature debugging with first-time live model debugging. Start with `fixture` or `existing` corpus mode.
+
+Live model project artifacts include:
+
+- `model_calls.jsonl`: sanitized per-call metadata, schema status, retry count, usage when reported, finish reason, latency, and agent stage.
+- `model_usage.json`: aggregate call count, token usage when reported, structured-output failures, and repair attempts.
+- `model_provider_status.json`: provider mode, sanitized base URL host, requested model, and whether authentication was configured.
+
+Structured outputs are parsed as JSON only. Fenced JSON can be extracted, Pydantic validation is enforced, and bounded repair attempts count against the model-call budget. API keys and authorization headers are never written to artifacts.
+
+Compare a deterministic mock run against a live candidate:
+
+```bash
+python -m coscientist.cli compare-model-runs \
+  runs/code-assistant-mock \
+  runs/code-assistant-live-smoke
+```
+
 ## Cache
 
 Provider responses use a local cache at `.coscientist_cache/provider_responses` by default. Cache keys include provider, operation, normalized request, and API version. API keys, authorization headers, and contact emails are redacted from cache keys and request logs. Cache writes are atomic and corrupted cache files are ignored safely.
@@ -203,7 +276,7 @@ Normal runs write JSON/JSONL artifacts under `runs/<run_id>/`. Literature-enable
 - `citation_verifications_round_0.json`
 - `evidence_claims_round_0.json`
 
-V1 project runs write `resolved_configuration.json`, `literature_queries.jsonl`, provider status/usage files, raw provider records, enrichment outputs, `deduplication_report.json`, and `corpus_manifest.json`. These files are enough to resume later with `--corpus runs/<run_id>/corpus.jsonl` without repeating provider calls.
+V1 project runs write `resolved_configuration.json`, `literature_queries.jsonl`, provider status/usage files, raw provider records, enrichment outputs, `deduplication_report.json`, and `corpus_manifest.json`. They also write `model_calls.jsonl`, `model_usage.json`, and `model_provider_status.json`. These files are enough to resume later with `--corpus runs/<run_id>/corpus.jsonl` without repeating provider calls.
 
 ## Legal Retrieval Rules
 

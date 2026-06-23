@@ -5,6 +5,8 @@ from typing import Any, TypeVar
 
 from pydantic import BaseModel
 
+from coscientist.schemas.model_provider import ModelCallRecord
+
 T = TypeVar("T", bound=BaseModel)
 
 
@@ -14,6 +16,7 @@ class ProviderError(RuntimeError):
 
 class StructuredLLMProvider(ABC):
     name: str
+    call_records: list[ModelCallRecord]
 
     @abstractmethod
     async def generate_structured(

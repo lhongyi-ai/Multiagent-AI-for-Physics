@@ -26,7 +26,13 @@ class RankerAgent(Agent):
         batch = await self.provider.generate_structured(
             prompt,
             RankingBatch,
-            {"hypotheses": hypotheses, "reviews": reviews, "weights": config.ranking_weights},
+            {
+                "hypotheses": hypotheses,
+                "reviews": reviews,
+                "weights": config.ranking_weights,
+                "agent_role": "ranker",
+                "workflow_stage": f"ranking_round_{round_number}",
+            },
         )
         ranking_by_id = {ranking.hypothesis_id: ranking for ranking in batch.rankings}
         pairs = list(itertools.combinations(hypotheses, 2))
@@ -38,7 +44,11 @@ class RankerAgent(Agent):
         comparisons = await self.provider.generate_structured(
             prompt,
             PairwiseBatch,
-            {"pairs": randomized_pairs},
+            {
+                "pairs": randomized_pairs,
+                "agent_role": "ranker",
+                "workflow_stage": f"pairwise_round_{round_number}",
+            },
         )
         wins = {hypothesis.id: 0 for hypothesis in hypotheses}
         losses = {hypothesis.id: 0 for hypothesis in hypotheses}
