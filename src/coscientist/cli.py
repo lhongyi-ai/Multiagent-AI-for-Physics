@@ -7,6 +7,12 @@ from pathlib import Path
 
 from pydantic import ValidationError
 
+from coscientist.closed_question import (
+    compare_closed_feedback,
+    run_closed_question_project,
+    validate_closed_feedback_artifacts,
+    validate_closed_question_artifacts,
+)
 from coscientist.config import load_config, load_research_goal
 from coscientist.literature.http import NetworkDisabledError
 from coscientist.literature.pipeline import build_literature_pipeline
@@ -129,6 +135,24 @@ def build_parser() -> argparse.ArgumentParser:
 
     validate_feedback = subcommands.add_parser("validate-feedback-ab", help="Validate V1.5C feedback A/B artifacts.")
     validate_feedback.add_argument("experiment_dir")
+
+    run_closed = subcommands.add_parser("run-closed-question", help="Run an offline V1.6 closed-question benchmark or pilot.")
+    run_closed.add_argument("project")
+    run_closed.add_argument("--runs-dir", default="runs")
+    run_closed.add_argument("--run-id", default=None)
+    run_closed.add_argument("--force", action="store_true")
+
+    evaluate_closed = subcommands.add_parser("evaluate-closed-question", help="Print V1.6 closed-question evaluation summary.")
+    evaluate_closed.add_argument("run_dir")
+
+    compare_closed = subcommands.add_parser("compare-closed-feedback", help="Run deterministic closed-question advisory-vs-feedback comparison.")
+    compare_closed.add_argument("project")
+    compare_closed.add_argument("--runs-dir", default="runs")
+    compare_closed.add_argument("--experiment-id", default=None)
+    compare_closed.add_argument("--force", action="store_true")
+
+    validate_closed = subcommands.add_parser("validate-closed-question", help="Validate V1.6 closed-question artifacts.")
+    validate_closed.add_argument("run_or_experiment_dir")
     return parser
 
 
@@ -386,6 +410,45 @@ def _validate_feedback_ab(args: argparse.Namespace) -> int:
     return 0
 
 
+def _run_closed_question(args: argparse.Namespace) -> int:
+    output = run_closed_question_project(args.project, runs_dir=args.runs_dir, run_id=args.run_id, force=args.force)
+    print(f"Closed-question run complete: {Path(output).resolve()}")
+    print(f"Report: {(Path(output) / 'report.md').resolve()}")
+    print(f"Human review: {(Path(output) / 'human_review.md').resolve()}")
+    return 0
+
+
+def _evaluate_closed_question(args: argparse.Namespace) -> int:
+    evaluations = read_json(Path(args.run_dir) / "closed_question_evaluations.json")
+    correct = sum(1 for item in evaluations if item.get("correct"))
+    print(f"Closed questions: {len(evaluations)}")
+    print(f"Correct: {correct}")
+    for item in evaluations:
+        print(f"{item['question_id']}: {item['outcome']} confidence={item['confidence']}")
+    return 0
+
+
+def _compare_closed_feedback(args: argparse.Namespace) -> int:
+    output = compare_closed_feedback(args.project, runs_dir=args.runs_dir, experiment_id=args.experiment_id, force=args.force)
+    print(f"Closed feedback comparison: {Path(output).resolve()}")
+    print(f"Report: {(Path(output) / 'report.md').resolve()}")
+    return 0
+
+
+def _validate_closed_question(args: argparse.Namespace) -> int:
+    path = Path(args.run_or_experiment_dir)
+    if (path / "closed_question_ab_comparison.json").exists():
+        errors = validate_closed_feedback_artifacts(path)
+    else:
+        errors = validate_closed_question_artifacts(path)
+    if errors:
+        for error in errors:
+            print(f"Error: {error}")
+        return 2
+    print(f"Valid V1.6 closed-question artifacts: {path.resolve()}")
+    return 0
+
+
 def _guard_live(provider_names: list[str], live_network: bool) -> None:
     live_providers = {"openalex", "crossref", "unpaywall", "arxiv"}
     if any(name in live_providers for name in provider_names) and not live_network:
@@ -430,6 +493,14 @@ def main(argv: list[str] | None = None) -> int:
             return asyncio.run(_compare_feedback(args))
         if args.command == "validate-feedback-ab":
             return _validate_feedback_ab(args)
+        if args.command == "run-closed-question":
+            return _run_closed_question(args)
+        if args.command == "evaluate-closed-question":
+            return _evaluate_closed_question(args)
+        if args.command == "compare-closed-feedback":
+            return _compare_closed_feedback(args)
+        if args.command == "validate-closed-question":
+            return _validate_closed_question(args)
     except (ValidationError, ValueError, ProviderError, CompletedRunError, NetworkDisabledError) as exc:
         print(f"Error: {exc}")
         return 2

@@ -1,0 +1,172 @@
+schema_version: v16
+project_id: closed-question-benchmark
+title: Offline closed-question benchmark
+description: Small deterministic benchmark for constrained answers, abstention, objective scoring, and metadata-only evidence handling.
+model_mode: mock
+literature_mode: existing
+grounding_mode: strict
+corpus_path: corpus.jsonl
+questions:
+  - question_id: q_single_sufficient
+    prompt: Which retrieval method is best supported for exact API-name recovery?
+    question_type: single_choice
+    answer_options:
+      - answer_id: lexical
+        statement: Lexical retrieval is best supported for exact API-name recovery.
+        category: retrieval
+      - answer_id: semantic
+        statement: Semantic retrieval is best supported for exact API-name recovery.
+        category: retrieval
+      - answer_id: insufficient
+        statement: Insufficient evidence.
+        category: abstention
+    allowed_answer_count: 1
+    allow_abstention: true
+    evaluation_method: exact_match
+  - question_id: q_single_abstain
+    prompt: Which unobserved private telemetry signal improves code suggestions?
+    question_type: single_choice
+    answer_options:
+      - answer_id: dwell_time
+        statement: Dwell time is supported.
+      - answer_id: cursor_jitter
+        statement: Cursor jitter is supported.
+      - answer_id: insufficient
+        statement: Insufficient evidence.
+    allowed_answer_count: 1
+    allow_abstention: true
+    evaluation_method: exact_match
+  - question_id: q_multi
+    prompt: Which mechanisms have verified support for improving suggestion relevance?
+    question_type: multi_choice
+    answer_options:
+      - answer_id: lexical
+        statement: Lexical matching.
+      - answer_id: reranking
+        statement: Reranking.
+      - answer_id: telemetry
+        statement: Private telemetry.
+    allowed_answer_count: 2
+    allow_abstention: true
+    evaluation_method: set_match
+  - question_id: q_ranking
+    prompt: Rank mechanisms by duplicate-adjusted evidence support.
+    question_type: ranking
+    answer_options:
+      - answer_id: reranking
+        statement: Reranking.
+      - answer_id: lexical
+        statement: Lexical matching.
+      - answer_id: semantic
+        statement: Semantic retrieval.
+    allowed_answer_count: 1
+    allow_abstention: true
+    evaluation_method: ranking_agreement
+  - question_id: q_numeric
+    prompt: What is the deterministic mean score from the supplied observations?
+    question_type: numeric
+    answer_options: []
+    allowed_answer_count: 1
+    allow_abstention: true
+    evaluation_method: numeric_tolerance
+    tolerance: 0.2
+    units: score
+    metadata:
+      numeric_observations: [4.8, 5.0, 5.2]
+  - question_id: q_duplicate
+    prompt: Does duplicate evidence alone create independent support?
+    question_type: single_choice
+    answer_options:
+      - answer_id: duplicate_support
+        statement: Duplicate snippets alone are sufficient.
+      - answer_id: independent_support_required
+        statement: Independent support is required.
+    allowed_answer_count: 1
+    allow_abstention: true
+    evaluation_method: exact_match
+  - question_id: q_contradiction
+    prompt: Which mechanism should be selected when support is contradicted?
+    question_type: single_choice
+    answer_options:
+      - answer_id: cache_only
+        statement: Cache-only retrieval is sufficient.
+      - answer_id: insufficient
+        statement: Insufficient evidence due to contradiction.
+    allowed_answer_count: 1
+    allow_abstention: true
+    evaluation_method: exact_match
+  - question_id: q_metadata_only
+    prompt: Can metadata-only evidence establish the answer?
+    question_type: single_choice
+    answer_options:
+      - answer_id: metadata_support
+        statement: Metadata-only support is enough.
+      - answer_id: insufficient
+        statement: Insufficient evidence.
+    allowed_answer_count: 1
+    allow_abstention: true
+    evaluation_method: exact_match
+ground_truth:
+  - question_id: q_single_sufficient
+    correct_answer_ids: [lexical]
+    rationale: Two curated local excerpts support lexical retrieval for exact API-name recovery.
+    provenance: [bench-e1, bench-e2]
+    hidden_from_agents: true
+  - question_id: q_single_abstain
+    acceptable_abstention: true
+    rationale: No local evidence supports the private telemetry options.
+    provenance: []
+    hidden_from_agents: true
+  - question_id: q_multi
+    correct_answer_ids: [lexical, reranking]
+    rationale: Local evidence supports lexical matching and reranking, not private telemetry.
+    provenance: [bench-e1, bench-e3]
+    hidden_from_agents: true
+  - question_id: q_ranking
+    correct_ranking: [reranking, lexical, semantic]
+    rationale: Reranking has the strongest support, lexical next, semantic weakest.
+    provenance: [bench-e3, bench-e4, bench-e1, bench-e5]
+    hidden_from_agents: true
+  - question_id: q_numeric
+    numeric_value: 5.0
+    numeric_interval: [4.8, 5.2]
+    rationale: Mean of the supplied deterministic observations.
+    provenance: [question-metadata]
+    hidden_from_agents: true
+  - question_id: q_duplicate
+    correct_answer_ids: [independent_support_required]
+    rationale: Duplicate evidence should not be counted as independent support.
+    provenance: [bench-e6, bench-e7]
+    hidden_from_agents: true
+  - question_id: q_contradiction
+    acceptable_abstention: true
+    rationale: Contradicting evidence makes the confident cache-only answer unsafe.
+    provenance: [bench-e8, bench-e9]
+    hidden_from_agents: true
+  - question_id: q_metadata_only
+    acceptable_abstention: true
+    rationale: Metadata-only records must not establish answer support.
+    provenance: [bench-e10]
+    hidden_from_agents: true
+config:
+  token_budget:
+    max_total_model_calls: 20
+    max_total_tokens: 45000
+    stop_on_budget_exhaustion: true
+  generation:
+    max_hypotheses: 8
+  grounding:
+    max_evidence_items_per_hypothesis: 5
+    max_contradiction_items_per_hypothesis: 2
+    max_chunks_per_source: 2
+    max_chunk_characters: 1000
+    max_total_context_characters: 12000
+  answer_policy:
+    allow_abstention: true
+    minimum_confidence: 0.65
+    minimum_verified_evidence_items: 1
+    minimum_independent_clusters: 1
+    max_unresolved_fatal_flaws: 0
+    require_contradiction_review: true
+    require_valid_artifact_references: true
+created_at: 2026-06-23T00:00:00+00:00

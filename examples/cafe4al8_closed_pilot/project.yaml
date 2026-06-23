@@ -1,0 +1,82 @@
+schema_version: v16
+project_id: cafe4al8-closed-pilot
+title: CaFe4Al8 intermetallic synthesis closed-question pilot
+description: Offline existing-corpus pilot for constrained reasoning over Ca-Fe-Al synthesis observations and local curated notes. Published-source slots are explicit and should be replaced with verified literature excerpts before scientific use.
+model_mode: mock
+literature_mode: existing
+grounding_mode: strict
+corpus_path: corpus.jsonl
+questions:
+  - question_id: cafe-mechanism
+    prompt: Given the supplied synthesis history, XRD observations, EDX result, and curated local notes, which mechanism is the primary explanation for the near-absence of Ca in the recovered crystals?
+    question_type: single_choice
+    answer_options:
+      - answer_id: A
+        statement: Pre-sealing air oxidation of Ca.
+      - answer_id: B
+        statement: High-temperature Ca loss or transport away from the melt.
+      - answer_id: C
+        statement: Reaction of Ca with crucible, ampoule, or contaminants.
+      - answer_id: D
+        statement: Preferential formation of Fe-Al or Al-rich competing phases.
+      - answer_id: E
+        statement: Surface-sensitive EDX substantially underestimates bulk Ca.
+      - answer_id: F
+        statement: Insufficient evidence to identify a primary mechanism.
+    allowed_answer_count: 1
+    allow_abstention: true
+    evaluation_method: exact_match
+  - question_id: cafe-next-experiment
+    prompt: Which single next experiment would provide the highest information gain for distinguishing the two leading mechanisms?
+    question_type: single_choice
+    answer_options:
+      - answer_id: icp_bulk
+        statement: Quantitative bulk composition by ICP-OES or ICP-MS.
+      - answer_id: cross_section_mapping
+        statement: Cross-sectional EDX or WDS mapping.
+      - answer_id: deposits
+        statement: Analysis of residual flux and ampoule-wall deposits.
+      - answer_id: ca_excess
+        statement: Repeated growth with controlled Ca excess.
+      - answer_id: crucible_liner
+        statement: Repeated growth with changed crucible or liner.
+      - answer_id: quench_series
+        statement: Intermediate quench series with phase characterization.
+      - answer_id: insufficient
+        statement: Insufficient evidence.
+    allowed_answer_count: 1
+    allow_abstention: true
+    evaluation_method: exact_match
+ground_truth:
+  - question_id: cafe-mechanism
+    correct_answer_ids: [F]
+    rationale: The local corpus supports several plausible mechanisms but lacks bulk composition, deposit analysis, and verified literature sufficient to identify one primary mechanism.
+    provenance: [exp-obs-1, exp-edx-1, note-ca-loss-1, note-feal-1]
+    hidden_from_agents: true
+  - question_id: cafe-next-experiment
+    correct_answer_ids: [icp_bulk]
+    rationale: Bulk composition is the highest-information first discriminator between true Ca absence and surface-sensitive EDX undercounting before mechanism-specific follow-up experiments.
+    provenance: [exp-edx-1, note-edx-1, note-bulk-1]
+    hidden_from_agents: true
+config:
+  token_budget:
+    max_total_model_calls: 20
+    max_total_tokens: 45000
+    stop_on_budget_exhaustion: true
+  generation:
+    max_hypotheses: 8
+  grounding:
+    max_evidence_items_per_hypothesis: 5
+    max_contradiction_items_per_hypothesis: 2
+    max_chunks_per_source: 2
+    max_chunk_characters: 1000
+    max_total_context_characters: 12000
+  answer_policy:
+    allow_abstention: true
+    minimum_confidence: 0.65
+    minimum_verified_evidence_items: 1
+    minimum_independent_clusters: 1
+    max_unresolved_fatal_flaws: 0
+    require_contradiction_review: true
+    require_valid_artifact_references: true
+created_at: 2026-06-23T00:00:00+00:00

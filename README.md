@@ -203,6 +203,82 @@ python -m coscientist.cli validate-feedback-ab runs/materials-feedback-ab
 
 The default comparison uses the mock provider, fixture or existing corpus, strict grounding, deterministic seed, no live network, and no live model. Outcome labels are bounded: `improved`, `mixed`, `no_material_change`, `regressed`, or `insufficient_evidence`. A controlled-feedback branch is not considered scientifically successful based on one metric alone.
 
+## V1.6 Closed-Question Evaluation
+
+V1.6 adds evidence-grounded closed scientific question answering for bounded answer spaces. Supported question types are `single_choice`, `multi_choice`, `ranking`, and `numeric`. Ground truth is stored only in evaluator artifacts and is never written into agent-visible question artifacts.
+
+```mermaid
+flowchart TD
+    A[ClosedQuestion] --> B[Evidence-derived hypotheses]
+    B --> C[Grounding and review]
+    C --> D[Ranking and proximity]
+    D --> E[Hypothesis-answer links]
+    E --> F[Answer-evidence matrix]
+    F --> G[AnswerSynthesisAgent]
+    G --> H[FinalAnswerValidator]
+    H --> I[Objective evaluation]
+```
+
+The default implementation is deterministic and token-efficient:
+
+- no full run history is passed to answer synthesis;
+- corpus context is compressed by evidence IDs and short excerpts;
+- metadata-only records are removed from verified support;
+- duplicate evidence and duplicate clusters are discounted;
+- validation, exact-match scoring, aggregation, calibration, and artifact checks use deterministic code;
+- model calls and token costs are recorded as zero/unavailable for offline mock runs instead of being fabricated.
+
+Run the V1.6A deterministic benchmark:
+
+```bash
+PYTHONPATH=src python -m coscientist.cli run-closed-question \
+  examples/closed_question_benchmark/project.yaml \
+  --runs-dir runs \
+  --run-id closed-demo \
+  --force
+
+PYTHONPATH=src python -m coscientist.cli evaluate-closed-question runs/closed-demo
+PYTHONPATH=src python -m coscientist.cli validate-closed-question runs/closed-demo
+```
+
+Run advisory-versus-controlled-feedback comparison with final-answer metrics:
+
+```bash
+PYTHONPATH=src python -m coscientist.cli compare-closed-feedback \
+  examples/closed_question_benchmark/project.yaml \
+  --runs-dir runs \
+  --experiment-id closed-feedback-ab \
+  --force
+
+PYTHONPATH=src python -m coscientist.cli validate-closed-question runs/closed-feedback-ab
+```
+
+Run the V1.6B offline CaFe4Al8 pilot:
+
+```bash
+PYTHONPATH=src python -m coscientist.cli run-closed-question \
+  examples/cafe4al8_closed_pilot/project.yaml \
+  --runs-dir runs \
+  --run-id cafe4al8-closed \
+  --force
+```
+
+The CaFe4Al8 pilot uses local existing-corpus records and explicitly labels user observations, local curation notes, and metadata-only placeholders. It does not claim that a synthesis mechanism is scientifically proven.
+
+Optional future live-model command, not run by default:
+
+```bash
+PYTHONPATH=src python -m coscientist.cli run-project \
+  examples/materials_synthesis_grounded_pilot/project.yaml \
+  --provider openai \
+  --live-model \
+  --literature-mode existing \
+  --corpus examples/cafe4al8_closed_pilot/corpus.jsonl \
+  --max-model-calls 12 \
+  --max-evolution-rounds 1 \
+  --run-id cafe4al8-live-controlled
+```
+
 ## Live Network And Model Opt-In
 
 Live network access cannot happen accidentally. Literature APIs and live LLMs use separate permissions.

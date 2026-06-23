@@ -16,6 +16,8 @@ Current V1.5B implementation note: offline project runs now persist structured p
 
 Current V1.5C implementation note: the repository now supports deterministic advisory-versus-controlled-feedback A/B experiments. Structured MetaReview recommendations pass through a RecommendationValidator, become a NextRoundPlan, and are executed only by a RecommendationExecutor in the explicitly enabled treatment branch. The default workflow remains advisory/offline, feedback cannot alter live permission gates or API credentials, and comparison outcome labels are bounded process diagnostics rather than scientific-truth claims.
 
+Current V1.6 implementation note: closed-question pilots now support constrained answer spaces, hypothesis-to-answer links, answer-evidence matrices, deterministic final-answer validation, abstention, ground-truth evaluation, calibration summaries, and closed-feedback comparison. The default closed-question path is mock/offline and uses compact curated evidence rather than full corpus or full run history. CaFe4Al8 support is an offline existing-corpus pilot with user observations and local curation notes separated from future verified literature slots.
+
 ## 1. Scope
 
 This workflow supports research tasks across physics, mathematics, chemistry, engineering, computer science, AI, and interdisciplinary science. It is intended for problems where the answer may be unknown, contested, difficult to validate, or dependent on domain-specific evidence.
