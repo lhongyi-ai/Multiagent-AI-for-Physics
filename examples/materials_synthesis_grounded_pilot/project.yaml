@@ -78,6 +78,30 @@ v15b:
     max_context_characters: 30000
     prioritize_verified_full_text: true
     include_metadata_only_records: false
+v15c:
+  enabled: true
+  controlled_feedback:
+    enabled: false
+    require_explicit_enable: true
+    max_generator_reallocation: 4
+    max_targeted_search_queries: 5
+    max_repairs: 3
+    max_branches: 3
+    max_combinations: 2
+    max_holds: 5
+    max_recommendations: 10
+    max_cluster_resource_fraction: 0.6
+    preserve_strategy_diversity: true
+    require_valid_artifact_references: true
+    allow_single_cluster_dominance: false
+  ab_experiment:
+    enabled: true
+    random_seed: 11
+    control_label: control_advisory
+    treatment_label: treatment_controlled_feedback
+    max_evolution_rounds: 1
+    force_mock_model: true
+    force_offline_literature: true
 rubric_path: ../../research-projects/code_assistant_fixture/rubric.yaml
 created_at: 2026-06-23T00:00:00+00:00
 schema_version: v1

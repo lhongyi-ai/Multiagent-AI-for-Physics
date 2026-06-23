@@ -56,6 +56,23 @@ flowchart TD
     J --> K[Human Review]
 ```
 
+V1.5C adds deterministic controlled-feedback evaluation:
+
+```mermaid
+flowchart TD
+    A[Round N artifacts] --> B[MetaReviewAgent]
+    B --> C[Structured recommendations]
+    C --> D[RecommendationValidator]
+    D --> E[RecommendationDecisions]
+    E --> F[NextRoundPlan]
+    F --> G[RecommendationExecutor]
+    G --> H[Round N+1]
+    H --> I[Evaluation]
+    I --> J[Advisory vs feedback comparison]
+```
+
+Controlled feedback is disabled by default. Advisory mode persists recommendations and validation diagnostics but does not mutate the next round. Controlled-feedback mode must be explicitly enabled by project configuration or by the deterministic A/B runner's treatment branch, and only validated bounded actions can affect generation, targeted search requests, repair, branch, combine, or hold decisions. Feedback cannot enable live network/model access, change API credentials, or raise project budget ceilings.
+
 ## Providers
 
 - `mock`: deterministic offline search, metadata, and full-text-location fixtures.
@@ -152,6 +169,39 @@ Important V1 artifacts:
 Interpret V1 scores as workflow diagnostics, not scientific truth. The evaluator is deterministic and useful for regression testing, but it can prefer its own rubric. Evidence verification checks fixture references, duplicate IDs, excerpts, unsupported claims, conflicts, and overstatement; it does not prove semantic truth.
 
 The included pilot corpus is intentionally small and incomplete. Add another pilot by creating a project directory with `project.yaml`, `corpus.jsonl`, `rubric.yaml`, and a README, then run `run-project` against that spec.
+
+## V1.5B And V1.5C Grounded Feedback
+
+V1.5B artifacts describe the hypothesis landscape:
+
+- `proximity_round_final.json`: pairwise similarity, clusters, graph nodes/edges, and search-space coverage.
+- `clusters_round_final.json` and `hypothesis_graph_round_final.json`: machine-readable hypothesis landscape.
+- `grounding_packets_round_final.json` and `grounding_diagnostics_round_final.json`: strict evidence context and grounding diagnostics.
+- `meta_review_round_final.json` and `meta_review_decisions_round_final.json`: advisory meta-review recommendations and default-off feedback decision.
+- `v15b_summary.json`: compact landscape/grounding/meta-review summary.
+
+V1.5C artifacts evaluate whether controlled feedback changes the next round:
+
+- `meta_review_recommendations_round_0.json`: bounded structured actions.
+- `recommendation_decisions_round_0.json`: validator decisions and rejection reasons.
+- `next_round_plan_round_1.json`: accepted actions normalized into a plan.
+- `feedback_execution_round_1.json`: actual executor actions.
+- `feedback_ab_manifest.json`: shared control/treatment baseline and permission guarantees.
+- `feedback_ab_comparison.json`: diversity, grounding, quality-proxy, process, and cost metrics.
+- `feedback_ab_summary.md`, `report.md`, and `human_review.md`: researcher-facing summaries and review questions.
+
+Run the offline materials feedback comparison:
+
+```bash
+python -m coscientist.cli compare-feedback \
+  examples/materials_synthesis_grounded_pilot/project.yaml \
+  --runs-dir runs \
+  --experiment-id materials-feedback-ab
+
+python -m coscientist.cli validate-feedback-ab runs/materials-feedback-ab
+```
+
+The default comparison uses the mock provider, fixture or existing corpus, strict grounding, deterministic seed, no live network, and no live model. Outcome labels are bounded: `improved`, `mixed`, `no_material_change`, `regressed`, or `insufficient_evidence`. A controlled-feedback branch is not considered scientifically successful based on one metric alone.
 
 ## Live Network And Model Opt-In
 

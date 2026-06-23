@@ -71,6 +71,10 @@ def read_jsonl(path: Path) -> list[Any]:
 
 def validate_v1_artifacts(run_dir: str | Path) -> list[str]:
     path = Path(run_dir)
+    if (path / "feedback_ab_manifest.json").exists():
+        from coscientist.pilot.feedback_ab import validate_feedback_ab_artifacts
+
+        return validate_feedback_ab_artifacts(path)
     errors = []
     for name in REQUIRED_V1_ARTIFACTS:
         if not (path / name).exists():

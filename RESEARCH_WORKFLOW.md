@@ -14,6 +14,8 @@ Current V1.5A implementation note: project runs can use an explicitly gated Open
 
 Current V1.5B implementation note: offline project runs now persist structured proximity analysis, hypothesis graph artifacts, grounding packets and diagnostics, and artifact-aware meta-review recommendations. Meta-review runs in advisory mode by default; controlled feedback mode is represented by validated decision artifacts and requires explicit project configuration.
 
+Current V1.5C implementation note: the repository now supports deterministic advisory-versus-controlled-feedback A/B experiments. Structured MetaReview recommendations pass through a RecommendationValidator, become a NextRoundPlan, and are executed only by a RecommendationExecutor in the explicitly enabled treatment branch. The default workflow remains advisory/offline, feedback cannot alter live permission gates or API credentials, and comparison outcome labels are bounded process diagnostics rather than scientific-truth claims.
+
 ## 1. Scope
 
 This workflow supports research tasks across physics, mathematics, chemistry, engineering, computer science, AI, and interdisciplinary science. It is intended for problems where the answer may be unknown, contested, difficult to validate, or dependent on domain-specific evidence.

@@ -13,8 +13,9 @@ from coscientist.literature.pipeline import build_literature_pipeline
 from coscientist.orchestration.workflow import run_workflow
 from coscientist.pilot.artifacts import read_json, read_jsonl, validate_v1_artifacts
 from coscientist.pilot.evidence import verify_hypothesis_evidence
+from coscientist.pilot.feedback_ab import compare_feedback_project, validate_feedback_ab_artifacts
 from coscientist.pilot.model_comparison import compare_model_runs
-from coscientist.pilot.project_io import load_fixture_corpus, load_project_spec
+from coscientist.pilot.project_io import load_project_spec
 from coscientist.pilot.reports import build_human_review_package
 from coscientist.pilot.runner import CompletedRunError, run_pilot_project
 from coscientist.providers.base import ProviderError
@@ -119,6 +120,15 @@ def build_parser() -> argparse.ArgumentParser:
     compare_models.add_argument("mock_run_dir")
     compare_models.add_argument("candidate_run_dir")
     compare_models.add_argument("--output-dir", default=None)
+
+    compare_feedback = subcommands.add_parser("compare-feedback", help="Run a deterministic advisory-vs-controlled-feedback V1.5C A/B experiment.")
+    compare_feedback.add_argument("project", help="Path to a V1 project YAML or JSON file.")
+    compare_feedback.add_argument("--runs-dir", default="runs")
+    compare_feedback.add_argument("--experiment-id", default=None)
+    compare_feedback.add_argument("--force", action="store_true", help="Overwrite a completed feedback A/B experiment directory.")
+
+    validate_feedback = subcommands.add_parser("validate-feedback-ab", help="Validate V1.5C feedback A/B artifacts.")
+    validate_feedback.add_argument("experiment_dir")
     return parser
 
 
@@ -353,6 +363,29 @@ def _compare_model_runs(args: argparse.Namespace) -> int:
     return 0
 
 
+async def _compare_feedback(args: argparse.Namespace) -> int:
+    output = await compare_feedback_project(
+        args.project,
+        runs_dir=args.runs_dir,
+        experiment_id=args.experiment_id,
+        force=args.force,
+    )
+    print(f"Feedback A/B experiment: {Path(output).resolve()}")
+    print(f"Summary: {(Path(output) / 'feedback_ab_summary.md').resolve()}")
+    print(f"Human review: {(Path(output) / 'human_review.md').resolve()}")
+    return 0
+
+
+def _validate_feedback_ab(args: argparse.Namespace) -> int:
+    errors = validate_feedback_ab_artifacts(args.experiment_dir)
+    if errors:
+        for error in errors:
+            print(f"Error: {error}")
+        return 2
+    print(f"Valid V1.5C feedback A/B artifacts: {Path(args.experiment_dir).resolve()}")
+    return 0
+
+
 def _guard_live(provider_names: list[str], live_network: bool) -> None:
     live_providers = {"openalex", "crossref", "unpaywall", "arxiv"}
     if any(name in live_providers for name in provider_names) and not live_network:
@@ -393,6 +426,10 @@ def main(argv: list[str] | None = None) -> int:
             return _validate_artifacts(args)
         if args.command == "compare-model-runs":
             return _compare_model_runs(args)
+        if args.command == "compare-feedback":
+            return asyncio.run(_compare_feedback(args))
+        if args.command == "validate-feedback-ab":
+            return _validate_feedback_ab(args)
     except (ValidationError, ValueError, ProviderError, CompletedRunError, NetworkDisabledError) as exc:
         print(f"Error: {exc}")
         return 2
