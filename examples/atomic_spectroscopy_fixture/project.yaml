@@ -1,0 +1,438 @@
+schema_version: v17
+project_id: atomic-spectroscopy-fixture
+title: Synthetic atomic spectroscopy inverse-problem benchmark
+model_mode: mock
+literature_mode: fixture
+grounding_mode: strict
+random_seed: 18
+problem:
+  problem_id: atomic-inverse-fixture
+  title: Recover finite-level atomic models from synthetic spectra
+  precise_statement: Use deterministic package-backed verifiers to recover hidden finite-level Hamiltonians from bounded synthetic spectroscopy observations.
+  problem_type: inverse_problem
+  scientific_domain: atomic_amo_physics
+  candidate_types: [mechanistic_model, counterexample, experiment_plan]
+  known_constraints:
+    - constraint_id: c-safe-model
+      description: Candidate models must use AtomicModelSpec and allowlisted Hamiltonian terms only.
+      hard: true
+  success_criteria:
+    - criterion_id: s-family-recovery
+      description: Select the fixture-correct model in each synthetic benchmark case.
+  failure_criteria:
+    - criterion_id: f-non-hermitian
+      description: Non-Hermitian closed-system Hamiltonians are invalid unless explicitly modeled as open systems.
+      severity: high
+  observable_targets:
+    - observable_id: transition-frequency
+      description: Transition frequencies in ordinary frequency units.
+      units: MHz
+  accepted_evidence_types: [synthetic_observation]
+  excluded_claims: [open-problem correctness, real atomic property prediction]
+  known_baselines: [one-shot candidate selection, generic V1.7 search]
+  corpus_scope: Deterministic synthetic observations only.
+  human_notes:
+    - This benchmark proves package-backed verification plumbing, not physical discovery.
+  provenance: [examples/atomic_spectroscopy_fixture/project.yaml]
+evidence_ids: []
+initial_candidates:
+  - candidate_id: case-a-coupled-true
+    problem_id: atomic-inverse-fixture
+    candidate_type: mechanistic_model
+    title: Case A coupled two-level model
+    summary: A two-level Hamiltonian with a coherent coupling reproduces the avoided-crossing splitting.
+    formal_representation: two-level coupled Hamiltonian
+    assumptions: [finite two-level basis]
+    predicted_observables: [transition frequency near 10.770329 MHz]
+    falsification_conditions: [observed transition is inconsistent with coupled splitting]
+    parent_ids: []
+    root_candidate_id: case-a-coupled-true
+    lineage_depth: 0
+    generation_strategy: mainstream_extension
+    linked_evidence_ids: []
+    linked_cluster_ids: []
+    verification_result_ids: []
+    failure_reason_ids: []
+    novelty_status: unknown
+    scientific_status: proposed
+    component_scores: {llm_prior: 0.4}
+    aggregate_search_score: 0.1
+    structured_model:
+      case_id: case_a
+      atomic_model:
+        schema_version: v18
+        model_id: case-a-coupled
+        candidate_id: case-a-coupled-true
+        model_family: driven_two_level
+        basis_states:
+          - state_id: g
+            label: ground
+            energy_reference: 0.0
+            quantum_numbers: {J: 0.0, mJ: 0.0, parity: even}
+          - state_id: e
+            label: excited
+            energy_reference: 0.0
+            quantum_numbers: {J: 1.0, mJ: 0.0, parity: odd}
+        hamiltonian_terms:
+          - term_id: detuning-e
+            term_type: diagonal_energy
+            coefficient: 10.0
+            unit: MHz
+            state_ids: [e]
+          - term_id: coupling-ge
+            term_type: coherent_coupling
+            coefficient: 2.0
+            unit: MHz
+            state_ids: [g, e]
+            hermitian_conjugate: true
+        parameters: []
+        requested_observables:
+          - observable_id: transitions
+            observable_type: transition_frequencies
+            unit: MHz
+        field_configuration: {}
+        units: {hamiltonian: Hz}
+        solver_preferences: {}
+        assumptions: [finite-level rotating-frame model]
+        limits_to_check: {zero_coupling_minimum_transition_hz: 10000000.0}
+      spectrum_observations:
+        - observation_id: case-a-spectrum
+          frequencies: [10.7703296]
+          unit: MHz
+          uncertainty: 0.02
+    created_step: 0
+    updated_step: 0
+    provenance: [fixture]
+  - candidate_id: case-a-uncoupled
+    problem_id: atomic-inverse-fixture
+    candidate_type: mechanistic_model
+    title: Case A uncoupled model
+    summary: A two-level model without coherent coupling misses the observed splitting.
+    formal_representation: two-level uncoupled Hamiltonian
+    assumptions: [finite two-level basis]
+    predicted_observables: [transition frequency near 10 MHz]
+    falsification_conditions: [observed splitting exceeds uncoupled detuning]
+    parent_ids: []
+    root_candidate_id: case-a-uncoupled
+    lineage_depth: 0
+    generation_strategy: mainstream_extension
+    linked_evidence_ids: []
+    linked_cluster_ids: []
+    verification_result_ids: []
+    failure_reason_ids: []
+    novelty_status: unknown
+    scientific_status: proposed
+    component_scores: {llm_prior: 0.6}
+    aggregate_search_score: 0.2
+    structured_model:
+      case_id: case_a
+      atomic_model:
+        schema_version: v18
+        model_id: case-a-uncoupled
+        candidate_id: case-a-uncoupled
+        model_family: finite_level_hamiltonian
+        basis_states:
+          - state_id: g
+            label: ground
+            energy_reference: 0.0
+            quantum_numbers: {J: 0.0, mJ: 0.0, parity: even}
+          - state_id: e
+            label: excited
+            energy_reference: 0.0
+            quantum_numbers: {J: 1.0, mJ: 0.0, parity: odd}
+        hamiltonian_terms:
+          - term_id: detuning-e
+            term_type: diagonal_energy
+            coefficient: 10.0
+            unit: MHz
+            state_ids: [e]
+        parameters: []
+        requested_observables: [{observable_id: transitions, observable_type: transition_frequencies, unit: MHz}]
+        field_configuration: {}
+        units: {hamiltonian: Hz}
+        solver_preferences: {}
+        assumptions: [finite-level model]
+        limits_to_check: {zero_coupling_minimum_transition_hz: 10000000.0}
+      spectrum_observations:
+        - observation_id: case-a-spectrum
+          frequencies: [10.7703296]
+          unit: MHz
+          uncertainty: 0.02
+    created_step: 0
+    updated_step: 0
+    provenance: [fixture]
+  - candidate_id: case-b-field-correct
+    problem_id: atomic-inverse-fixture
+    candidate_type: mechanistic_model
+    title: Case B field-distinguished three-level model
+    summary: Three levels reproduce the field-discriminating transition set.
+    formal_representation: three-level spectrum with discriminating field point
+    assumptions: [finite three-level basis]
+    predicted_observables: ["transitions near 5, 6, and 11 MHz"]
+    falsification_conditions: [field-sweep transition set is not reproduced]
+    parent_ids: []
+    root_candidate_id: case-b-field-correct
+    lineage_depth: 0
+    generation_strategy: mainstream_extension
+    linked_evidence_ids: []
+    linked_cluster_ids: []
+    verification_result_ids: []
+    failure_reason_ids: []
+    novelty_status: unknown
+    scientific_status: proposed
+    component_scores: {llm_prior: 0.45}
+    aggregate_search_score: 0.1
+    structured_model:
+      case_id: case_b
+      atomic_model:
+        schema_version: v18
+        model_id: case-b-correct
+        candidate_id: case-b-field-correct
+        model_family: zeeman_splitting
+        basis_states:
+          - state_id: a
+            label: a
+            energy_reference: 0.0
+            quantum_numbers: {J: 1.0, mJ: -1.0, parity: even}
+          - state_id: b
+            label: b
+            energy_reference: 0.0
+            quantum_numbers: {J: 1.0, mJ: 0.0, parity: odd}
+          - state_id: c
+            label: c
+            energy_reference: 0.0
+            quantum_numbers: {J: 1.0, mJ: 1.0, parity: even}
+        hamiltonian_terms:
+          - {term_id: e-b, term_type: diagonal_energy, coefficient: 5.0, unit: MHz, state_ids: [b]}
+          - {term_id: e-c, term_type: diagonal_energy, coefficient: 11.0, unit: MHz, state_ids: [c]}
+        parameters: []
+        requested_observables: [{observable_id: field-transitions, observable_type: transition_frequencies, unit: MHz}]
+        field_configuration: {B_tesla: 0.002}
+        units: {hamiltonian: Hz}
+        solver_preferences: {}
+        assumptions: [field point included]
+        limits_to_check: {}
+      spectrum_observations:
+        - observation_id: case-b-field-spectrum
+          frequencies: [5.0, 6.0, 11.0]
+          unit: MHz
+          uncertainty: 0.02
+    created_step: 0
+    updated_step: 0
+    provenance: [fixture]
+  - candidate_id: case-b-ambiguous-zero-field
+    problem_id: atomic-inverse-fixture
+    candidate_type: mechanistic_model
+    title: Case B zero-field ambiguous model
+    summary: A competing three-level model fits a subset but fails the discriminating field point.
+    formal_representation: three-level ambiguous model
+    assumptions: [finite three-level basis]
+    predicted_observables: ["transitions near 5, 5, and 10 MHz"]
+    falsification_conditions: [field-discriminating transition at 6 MHz is absent]
+    parent_ids: []
+    root_candidate_id: case-b-ambiguous-zero-field
+    lineage_depth: 0
+    generation_strategy: mainstream_extension
+    linked_evidence_ids: []
+    linked_cluster_ids: []
+    verification_result_ids: []
+    failure_reason_ids: []
+    novelty_status: unknown
+    scientific_status: proposed
+    component_scores: {llm_prior: 0.7}
+    aggregate_search_score: 0.2
+    structured_model:
+      case_id: case_b
+      atomic_model:
+        schema_version: v18
+        model_id: case-b-ambiguous
+        candidate_id: case-b-ambiguous-zero-field
+        model_family: finite_level_hamiltonian
+        basis_states:
+          - state_id: a
+            label: a
+            energy_reference: 0.0
+            quantum_numbers: {J: 1.0, mJ: -1.0, parity: even}
+          - state_id: b
+            label: b
+            energy_reference: 0.0
+            quantum_numbers: {J: 1.0, mJ: 0.0, parity: odd}
+          - state_id: c
+            label: c
+            energy_reference: 0.0
+            quantum_numbers: {J: 1.0, mJ: 1.0, parity: odd}
+        hamiltonian_terms:
+          - {term_id: e-b, term_type: diagonal_energy, coefficient: 5.0, unit: MHz, state_ids: [b]}
+          - {term_id: e-c, term_type: diagonal_energy, coefficient: 10.0, unit: MHz, state_ids: [c]}
+        parameters: []
+        requested_observables: [{observable_id: field-transitions, observable_type: transition_frequencies, unit: MHz}]
+        field_configuration: {}
+        units: {hamiltonian: Hz}
+        solver_preferences: {}
+        assumptions: [zero-field-only model]
+        limits_to_check: {}
+      spectrum_observations:
+        - observation_id: case-b-field-spectrum
+          frequencies: [5.0, 6.0, 11.0]
+          unit: MHz
+          uncertainty: 0.02
+    created_step: 0
+    updated_step: 0
+    provenance: [fixture]
+  - candidate_id: case-c-simple-true
+    problem_id: atomic-inverse-fixture
+    candidate_type: mechanistic_model
+    title: Case C simple held-out-passing model
+    summary: A simple two-level model matches the held-out transition without extra lines.
+    formal_representation: simple two-level held-out model
+    assumptions: [finite two-level basis]
+    predicted_observables: [single transition near 4.5 MHz]
+    falsification_conditions: [held-out field point produces extra lines]
+    parent_ids: []
+    root_candidate_id: case-c-simple-true
+    lineage_depth: 0
+    generation_strategy: mainstream_extension
+    linked_evidence_ids: []
+    linked_cluster_ids: []
+    verification_result_ids: []
+    failure_reason_ids: []
+    novelty_status: unknown
+    scientific_status: proposed
+    component_scores: {llm_prior: 0.3}
+    aggregate_search_score: 0.1
+    structured_model:
+      case_id: case_c
+      atomic_model:
+        schema_version: v18
+        model_id: case-c-simple
+        candidate_id: case-c-simple-true
+        model_family: effective_spectroscopy_model
+        basis_states:
+          - state_id: g
+            label: ground
+            energy_reference: 0.0
+            quantum_numbers: {J: 0.0, mJ: 0.0, parity: even}
+          - state_id: e
+            label: excited
+            energy_reference: 0.0
+            quantum_numbers: {J: 1.0, mJ: 0.0, parity: odd}
+        hamiltonian_terms:
+          - {term_id: e-e, term_type: diagonal_energy, coefficient: 4.5, unit: MHz, state_ids: [e]}
+        parameters: []
+        requested_observables: [{observable_id: held-out-transition, observable_type: transition_frequencies, unit: MHz}]
+        field_configuration: {}
+        units: {hamiltonian: Hz}
+        solver_preferences: {}
+        assumptions: [simple model]
+        limits_to_check: {}
+      spectrum_observations:
+        - observation_id: case-c-heldout
+          frequencies: [4.5]
+          unit: MHz
+          uncertainty: 0.02
+          held_out: true
+    created_step: 0
+    updated_step: 0
+    provenance: [fixture]
+  - candidate_id: case-c-complex-overfit
+    problem_id: atomic-inverse-fixture
+    candidate_type: mechanistic_model
+    title: Case C misleading complex model
+    summary: A more complex model fits one line but predicts unsupported extra transitions.
+    formal_representation: complex three-level overfit model
+    assumptions: [finite three-level basis, nuisance level, overfit auxiliary branch, extra free parameter, weak prior]
+    predicted_observables: [transitions near 4.5 and 9 MHz]
+    falsification_conditions: [held-out spectrum lacks extra line]
+    parent_ids: []
+    root_candidate_id: case-c-complex-overfit
+    lineage_depth: 0
+    generation_strategy: extreme_case_search
+    linked_evidence_ids: []
+    linked_cluster_ids: []
+    verification_result_ids: []
+    failure_reason_ids: []
+    novelty_status: possibly_novel
+    scientific_status: proposed
+    component_scores: {llm_prior: 0.95}
+    aggregate_search_score: 0.9
+    structured_model:
+      case_id: case_c
+      atomic_model:
+        schema_version: v18
+        model_id: case-c-complex
+        candidate_id: case-c-complex-overfit
+        model_family: finite_level_hamiltonian
+        basis_states:
+          - state_id: g
+            label: ground
+            energy_reference: 0.0
+            quantum_numbers: {J: 0.0, mJ: 0.0, parity: even}
+          - state_id: e
+            label: excited
+            energy_reference: 0.0
+            quantum_numbers: {J: 1.0, mJ: 0.0, parity: odd}
+          - state_id: x
+            label: nuisance
+            energy_reference: 0.0
+            quantum_numbers: {J: 1.0, mJ: 1.0, parity: odd}
+        hamiltonian_terms:
+          - {term_id: e-e, term_type: diagonal_energy, coefficient: 4.5, unit: MHz, state_ids: [e]}
+          - {term_id: e-x, term_type: diagonal_energy, coefficient: 9.0, unit: MHz, state_ids: [x]}
+        parameters: []
+        requested_observables: [{observable_id: held-out-transition, observable_type: transition_frequencies, unit: MHz}]
+        field_configuration: {}
+        units: {hamiltonian: Hz}
+        solver_preferences: {}
+        assumptions: [complex overfit]
+        limits_to_check: {}
+      spectrum_observations:
+        - observation_id: case-c-heldout
+          frequencies: [4.5]
+          unit: MHz
+          uncertainty: 0.02
+          held_out: true
+    created_step: 0
+    updated_step: 0
+    provenance: [fixture]
+search:
+  mode: beam
+  max_steps: 12
+  beam_width: 4
+  max_candidates_total: 24
+  max_children_per_candidate: 2
+  max_lineage_depth: 4
+  preserve_diverse_clusters: true
+  preserve_counterexample_branch: true
+  tournament_max_candidates: 6
+  tournament_max_comparisons: 8
+  tournament_debate_turns: 1
+  plateau_window: 3
+  plateau_minimum_improvement: 0.02
+  token_budget: 0
+  model_call_budget: 0
+  verifier_call_budget: 120
+enabled_verifiers:
+  - schema_constraint
+  - logical_consistency
+  - atomic_schema
+  - selection_rules
+  - symbolic_hamiltonian
+  - numerical_diagonalization
+  - spectrum_consistency
+  - limiting_cases
+  - parameter_fit
+  - counterexample_parameter_search
+  - qutip_eigen
+  - qutip_dynamics
+evaluator_only_ground_truth:
+  cases:
+    case_a:
+      hidden_model_family: driven_two_level
+      correct_candidate_id: case-a-coupled-true
+    case_b:
+      hidden_model_family: zeeman_splitting
+      correct_candidate_id: case-b-field-correct
+    case_c:
+      hidden_model_family: effective_spectroscopy_model
+      correct_candidate_id: case-c-simple-true
+created_at: 2026-06-23T00:00:00+00:00

@@ -162,6 +162,7 @@ class CandidateSolution(BaseModel):
     scientific_status: CandidateStatus = "proposed"
     component_scores: dict[str, float] = Field(default_factory=dict)
     aggregate_search_score: float = Field(default=0.0, ge=0.0, le=1.0)
+    structured_model: dict[str, Any] = Field(default_factory=dict)
     created_step: int = Field(ge=0)
     updated_step: int = Field(ge=0)
     provenance: list[str] = Field(default_factory=list)

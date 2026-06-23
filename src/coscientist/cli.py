@@ -13,6 +13,7 @@ from coscientist.closed_question import (
     validate_closed_feedback_artifacts,
     validate_closed_question_artifacts,
 )
+from coscientist.atomic.discovery import compare_atomic_verifiers, refresh_atomic_artifacts_if_present, run_atomic_discovery_project, validate_atomic_discovery_artifacts
 from coscientist.config import load_config, load_research_goal
 from coscientist.discovery import run_discovery_project, resume_discovery_checkpoint, validate_discovery_artifacts
 from coscientist.literature.http import NetworkDisabledError
@@ -167,6 +168,22 @@ def build_parser() -> argparse.ArgumentParser:
 
     validate_discovery = subcommands.add_parser("validate-discovery", help="Validate V1.7 discovery artifacts.")
     validate_discovery.add_argument("run_dir")
+
+    run_atomic = subcommands.add_parser("run-atomic-discovery", help="Run a deterministic V1.8 atomic/AMO discovery benchmark.")
+    run_atomic.add_argument("project")
+    run_atomic.add_argument("--runs-dir", default="runs")
+    run_atomic.add_argument("--run-id", default=None)
+    run_atomic.add_argument("--force", action="store_true")
+    run_atomic.add_argument("--stop-after-tasks", type=int, default=None)
+
+    validate_atomic = subcommands.add_parser("validate-atomic-discovery", help="Validate V1.8 atomic discovery artifacts.")
+    validate_atomic.add_argument("run_dir")
+
+    compare_atomic = subcommands.add_parser("compare-atomic-verifiers", help="Compare deterministic generic and atomic verifier baselines.")
+    compare_atomic.add_argument("project")
+    compare_atomic.add_argument("--runs-dir", default="runs")
+    compare_atomic.add_argument("--experiment-id", default=None)
+    compare_atomic.add_argument("--force", action="store_true")
     return parser
 
 
@@ -473,7 +490,10 @@ def _run_discovery(args: argparse.Namespace) -> int:
 
 def _resume_discovery(args: argparse.Namespace) -> int:
     output = resume_discovery_checkpoint(args.checkpoint)
+    refreshed_atomic = refresh_atomic_artifacts_if_present(output)
     print(f"Discovery resumed: {Path(output).resolve()}")
+    if refreshed_atomic:
+        print(f"Atomic artifacts refreshed: {(Path(output) / 'atomic_benchmark_metrics.json').resolve()}")
     print(f"Report: {(Path(output) / 'discovery_report.md').resolve()}")
     return 0
 
@@ -485,6 +505,30 @@ def _validate_discovery(args: argparse.Namespace) -> int:
             print(f"Error: {error}")
         return 2
     print(f"Valid V1.7 discovery artifacts: {Path(args.run_dir).resolve()}")
+    return 0
+
+
+def _run_atomic_discovery(args: argparse.Namespace) -> int:
+    output = run_atomic_discovery_project(args.project, runs_dir=args.runs_dir, run_id=args.run_id, force=args.force, stop_after_tasks=args.stop_after_tasks)
+    print(f"Atomic discovery run: {Path(output).resolve()}")
+    print(f"Report: {(Path(output) / 'atomic_discovery_report.md').resolve()}")
+    return 0
+
+
+def _validate_atomic_discovery(args: argparse.Namespace) -> int:
+    errors = validate_atomic_discovery_artifacts(args.run_dir)
+    if errors:
+        for error in errors:
+            print(f"Error: {error}")
+        return 2
+    print(f"Valid V1.8 atomic discovery artifacts: {Path(args.run_dir).resolve()}")
+    return 0
+
+
+def _compare_atomic_verifiers(args: argparse.Namespace) -> int:
+    output = compare_atomic_verifiers(args.project, runs_dir=args.runs_dir, experiment_id=args.experiment_id, force=args.force)
+    print(f"Atomic verifier comparison: {Path(output).resolve()}")
+    print(f"Summary: {(Path(output) / 'atomic_benchmark_summary.md').resolve()}")
     return 0
 
 
@@ -546,6 +590,12 @@ def main(argv: list[str] | None = None) -> int:
             return _resume_discovery(args)
         if args.command == "validate-discovery":
             return _validate_discovery(args)
+        if args.command == "run-atomic-discovery":
+            return _run_atomic_discovery(args)
+        if args.command == "validate-atomic-discovery":
+            return _validate_atomic_discovery(args)
+        if args.command == "compare-atomic-verifiers":
+            return _compare_atomic_verifiers(args)
     except (ValidationError, ValueError, ProviderError, CompletedRunError, NetworkDisabledError) as exc:
         print(f"Error: {exc}")
         return 2

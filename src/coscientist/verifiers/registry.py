@@ -1,6 +1,18 @@
 from __future__ import annotations
 
 from coscientist.verifiers.base import ScientificVerifier
+from coscientist.verifiers.atomic import (
+    AtomicSchemaVerifier,
+    CounterexampleParameterSearchVerifier,
+    LimitingCaseVerifier,
+    NumericalDiagonalizationVerifier,
+    ParameterFitVerifier,
+    QuTiPDynamicsVerifier,
+    QuTiPEigenVerifier,
+    SelectionRuleVerifier,
+    SpectrumConsistencyVerifier,
+    SymbolicHamiltonianVerifier,
+)
 from coscientist.verifiers.generic import (
     CounterexampleHookVerifier,
     EvidenceConsistencyVerifier,
@@ -37,6 +49,16 @@ def default_verifier_registry() -> VerifierRegistry:
         CounterexampleHookVerifier(),
         ExperimentalConsistencyVerifier(),
         MaterialsFormulaVerifier(),
+        AtomicSchemaVerifier(),
+        SelectionRuleVerifier(),
+        SymbolicHamiltonianVerifier(),
+        NumericalDiagonalizationVerifier(),
+        SpectrumConsistencyVerifier(),
+        LimitingCaseVerifier(),
+        ParameterFitVerifier(),
+        CounterexampleParameterSearchVerifier(),
+        QuTiPEigenVerifier(),
+        QuTiPDynamicsVerifier(),
     ]:
         registry.register(verifier)
     return registry
