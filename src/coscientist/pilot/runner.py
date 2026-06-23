@@ -6,6 +6,9 @@ from datetime import UTC, datetime
 from pathlib import Path
 from urllib.parse import urlparse
 
+from coscientist.agents.grounding import GroundingAgent
+from coscientist.agents.meta_review import MetaReviewAgent
+from coscientist.agents.proximity import ProximityAgent
 from coscientist.config import WorkflowConfig
 from coscientist.literature.http import NetworkDisabledError
 from coscientist.literature.scholarly import ScholarlyCorpusResult, ScholarlyLiteratureOrchestrator
@@ -25,6 +28,7 @@ from coscientist.schemas.model_provider import ModelCallRecord
 from coscientist.schemas.project import ResearchProjectSpec
 from coscientist.schemas.research_goal import ResearchGoal
 from coscientist.schemas.scholarly import ProjectLiteratureConfig
+from coscientist.schemas.v15b import V15BSummary
 from coscientist.storage.local_store import LocalStore
 
 
@@ -178,6 +182,18 @@ def build_v1_artifacts(
     ]
     comparison = compare_rounds(project, evaluations, rounds, verifications_by_round)
     all_verifications = [record for records in verifications_by_round.values() for record in records]
+    v15b_artifacts = _build_v15b_artifacts(
+        project=project,
+        run_id=run_id,
+        run_dir=run_dir,
+        corpus=corpus,
+        final_hypotheses=rounds["final"],
+        final_rankings=_latest_ranking_payload(run_dir),
+        evaluations=evaluations,
+        comparison=comparison,
+        all_verifications=all_verifications,
+        live_model=live_model,
+    )
     model_calls = _model_call_records(provider)
     model_usage = summarize_model_usage(provider.name if provider else "mock", "live" if live_model else "mock", model_calls)
     model_status = provider_status(
@@ -225,13 +241,26 @@ def build_v1_artifacts(
     write_json(run_dir / "evaluation_by_round.json", evaluations)
     write_json(run_dir / "round_comparison.json", comparison)
     write_json(run_dir / "lineage.json", {hypothesis.id: hypothesis.parent_ids for hypothesis in rounds["final"]})
+    write_json(run_dir / "proximity_round_final.json", v15b_artifacts["proximity"])
+    write_json(run_dir / "hypothesis_graph_round_final.json", {
+        "nodes": v15b_artifacts["proximity"].graph_nodes,
+        "edges": v15b_artifacts["proximity"].graph_edges,
+        "schema_version": "v15b",
+    })
+    write_json(run_dir / "clusters_round_final.json", v15b_artifacts["proximity"].clusters)
+    write_json(run_dir / "search_space_coverage_round_final.json", v15b_artifacts["proximity"].search_space_coverage)
+    write_json(run_dir / "meta_review_round_final.json", v15b_artifacts["meta_review"])
+    write_json(run_dir / "meta_review_decisions_round_final.json", v15b_artifacts["meta_review_decision"])
+    write_json(run_dir / "grounding_diagnostics_round_final.json", v15b_artifacts["grounding_diagnostics"])
+    write_json(run_dir / "grounding_packets_round_final.json", v15b_artifacts["grounding_packet"])
+    write_json(run_dir / "v15b_summary.json", v15b_artifacts["summary"])
     write_json(run_dir / "run_manifest.json", manifest)
     (run_dir / "report.md").write_text(
-        build_pilot_report(project, rounds["final"], evaluations, comparison, all_verifications),
+        build_pilot_report(project, rounds["final"], evaluations, comparison, all_verifications, v15b_artifacts=v15b_artifacts),
         encoding="utf-8",
     )
     (run_dir / "human_review.md").write_text(
-        build_human_review_package(project, corpus, rounds["final"], comparison, all_verifications),
+        build_human_review_package(project, corpus, rounds["final"], comparison, all_verifications, v15b_artifacts=v15b_artifacts),
         encoding="utf-8",
     )
     return run_dir
@@ -398,6 +427,103 @@ def _sanitized_env_base_url() -> str | None:
     if not parsed.scheme or not parsed.netloc:
         return "<invalid-base-url>"
     return f"{parsed.scheme}://{parsed.netloc}"
+
+
+def _latest_ranking_payload(run_dir: Path):
+    ranking_files = sorted(run_dir.glob("ranking_round_*.json"), key=lambda path: int(path.stem.rsplit("_", 1)[-1]))
+    if not ranking_files:
+        return []
+    return read_json(ranking_files[-1])
+
+
+def _build_v15b_artifacts(
+    *,
+    project: ResearchProjectSpec,
+    run_id: str,
+    run_dir: Path,
+    corpus,
+    final_hypotheses: list[Hypothesis],
+    final_rankings,
+    evaluations,
+    comparison,
+    all_verifications,
+    live_model: bool,
+):
+    rankings = []
+    from coscientist.schemas.ranking import HypothesisRanking
+
+    for item in final_rankings:
+        rankings.append(HypothesisRanking.model_validate(item))
+    final_verifications = [record for record in all_verifications if record.hypothesis_id in {hypothesis.id for hypothesis in final_hypotheses}]
+    grounding_agent = GroundingAgent()
+    grounding_packet = grounding_agent.build_packet(
+        project_id=project.project_id,
+        run_id=run_id,
+        round_label="final",
+        corpus=corpus,
+        verifications=final_verifications,
+        config=project.v15b.grounding,
+    )
+    grounding_diagnostics = grounding_agent.diagnostics(
+        project_id=project.project_id,
+        run_id=run_id,
+        round_label="final",
+        hypotheses=final_hypotheses,
+        verifications=final_verifications,
+        packet=grounding_packet,
+        config=project.v15b.grounding,
+    )
+    proximity = ProximityAgent().analyze(
+        project_id=project.project_id,
+        run_id=run_id,
+        round_label="final",
+        round_number=project.maximum_evolution_rounds,
+        hypotheses=final_hypotheses,
+        rankings=rankings,
+        verifications=final_verifications,
+        config=project.v15b.proximity,
+        model_mode="live" if live_model else "mock",
+        literature_mode=project.literature.mode,
+    )
+    meta_agent = MetaReviewAgent()
+    meta_review = meta_agent.review(
+        project_id=project.project_id,
+        run_id=run_id,
+        round_label="final",
+        round_number=project.maximum_evolution_rounds,
+        hypotheses=final_hypotheses,
+        rankings=rankings,
+        verifications=final_verifications,
+        evaluations=evaluations,
+        comparison=comparison,
+        proximity=proximity,
+        grounding=grounding_diagnostics,
+        config=project.v15b.meta_review,
+        model_mode="live" if live_model else "mock",
+        literature_mode=project.literature.mode,
+    )
+    meta_decision = meta_agent.decide(project_id=project.project_id, run_id=run_id, round_label="final", review=meta_review, config=project.v15b.meta_review)
+    summary = V15BSummary(
+        project_id=project.project_id,
+        run_id=run_id,
+        created_at=proximity.created_at,
+        proximity_enabled=project.v15b.proximity.enabled,
+        meta_review_enabled=project.v15b.meta_review.enabled,
+        grounding_mode=project.v15b.grounding.mode,
+        diversity_score=proximity.search_space_coverage.diversity_score,
+        collapse_risk=proximity.search_space_coverage.collapse_risk,
+        grounding_coverage_score=grounding_diagnostics.grounding_coverage_score,
+        stopping_assessment=meta_review.stopping_assessment,
+        recommended_next_task=meta_review.next_round_strategy,
+    )
+    return {
+        "grounding_packet": grounding_packet,
+        "grounding_diagnostics": grounding_diagnostics,
+        "proximity": proximity,
+        "meta_review": meta_review,
+        "meta_review_decision": meta_decision,
+        "summary": summary,
+    }
 
 
 def run_pilot_project_sync(*args, **kwargs) -> Path:

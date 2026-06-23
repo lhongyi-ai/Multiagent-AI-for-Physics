@@ -13,6 +13,7 @@ def build_pilot_report(
     evaluations: list[RoundEvaluation],
     comparison: RoundComparison,
     verifications: list[EvidenceVerificationRecord],
+    v15b_artifacts: dict | None = None,
 ) -> str:
     final_eval = next((item for item in evaluations if item.round_label == "final"), None)
     final_record_count = sum(len(hypothesis.evidence_links) for hypothesis in final_hypotheses)
@@ -64,6 +65,36 @@ def build_pilot_report(
         comparison.evaluator_self_preference_note,
         "",
     ])
+    if v15b_artifacts:
+        proximity = v15b_artifacts["proximity"]
+        meta = v15b_artifacts["meta_review"]
+        grounding = v15b_artifacts["grounding_diagnostics"]
+        lines.extend([
+            "## Hypothesis Landscape",
+            "",
+            f"- Clusters: {proximity.search_space_coverage.unique_cluster_count}",
+            f"- Diversity score: {proximity.search_space_coverage.diversity_score:.3f}",
+            f"- Collapse risk: {proximity.search_space_coverage.collapse_risk}",
+            f"- Largest-cluster fraction: {proximity.search_space_coverage.largest_cluster_fraction:.3f}",
+            f"- Isolated hypotheses: {', '.join(proximity.search_space_coverage.isolated_hypotheses) or 'none'}",
+            "",
+            "## Meta-Review Recommendations",
+            "",
+            f"- Stopping assessment: {meta.stopping_assessment}",
+            f"- Next-round strategy: {meta.next_round_strategy}",
+            f"- Recommended strategies: {', '.join(meta.recommended_generation_strategies) or 'none'}",
+            f"- Evidence gaps: {'; '.join(meta.evidence_gaps[:3])}",
+            "",
+            "## Grounding Quality",
+            "",
+            f"- Grounding mode: {grounding.grounding_mode}",
+            f"- Grounding coverage score: {grounding.grounding_coverage_score:.3f}",
+            f"- Citation hallucination count: {grounding.citation_hallucination_count}",
+            f"- Metadata-only misuse count: {grounding.metadata_only_misuse_count}",
+            "",
+            "Detailed machine-readable records: `proximity_round_final.json`, `hypothesis_graph_round_final.json`, `meta_review_round_final.json`, and `grounding_diagnostics_round_final.json`.",
+            "",
+        ])
     return "\n".join(lines)
 
 
@@ -73,6 +104,7 @@ def build_human_review_package(
     final_hypotheses: list[Hypothesis],
     comparison: RoundComparison,
     verifications: list[EvidenceVerificationRecord],
+    v15b_artifacts: dict | None = None,
 ) -> str:
     verification_by_hypothesis: dict[str, list[EvidenceVerificationRecord]] = {}
     for record in verifications:
@@ -172,4 +204,32 @@ def build_human_review_package(
         f"- Hypothesis diversity by round: {comparison.hypothesis_diversity}",
         "",
     ])
+    if v15b_artifacts:
+        proximity = v15b_artifacts["proximity"]
+        meta = v15b_artifacts["meta_review"]
+        grounding = v15b_artifacts["grounding_diagnostics"]
+        lines.extend([
+            "## V1.5B Landscape Review Questions",
+            "",
+            f"- Cluster IDs: {', '.join(cluster.cluster_id for cluster in proximity.clusters)}",
+            f"- Collapse risk: {proximity.search_space_coverage.collapse_risk}",
+            f"- Underexplored directions: {', '.join(proximity.search_space_coverage.underexplored_regions) or 'none'}",
+            f"- Meta-review stopping assessment: {meta.stopping_assessment}",
+            f"- Grounding coverage score: {grounding.grounding_coverage_score:.3f}",
+            "",
+            "Human reviewer checklist:",
+            "",
+            "- Are detected clusters scientifically meaningful?",
+            "- Were distinct mechanisms incorrectly merged?",
+            "- Were duplicates missed?",
+            "- Are underexplored directions actually plausible?",
+            "- Did the meta-review identify the right weaknesses?",
+            "- Are recommendations actionable?",
+            "- Are evidence claims properly grounded?",
+            "- Which hypothesis deserves further experimental work?",
+            "- Should the next round broaden, repair, combine, or stop?",
+            "",
+            "Relevant artifacts: `clusters_round_final.json`, `search_space_coverage_round_final.json`, `meta_review_round_final.json`, `grounding_packets_round_final.json`.",
+            "",
+        ])
     return "\n".join(lines)

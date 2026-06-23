@@ -40,6 +40,22 @@ flowchart TD
 
 OpenAlex and arXiv discover papers. Crossref resolves publication metadata. Unpaywall locates legal open-access copies. Finding a source is not the same as verifying a claim; citation verification still requires an exact passage.
 
+V1.5B adds proximity, grounding, and meta-review artifacts:
+
+```mermaid
+flowchart TD
+    A[Corpus] --> B[Grounding Packet]
+    B --> C[Generation]
+    C --> D[Review]
+    D --> E[Ranking]
+    E --> F[Evolution]
+    F --> G[Evaluation]
+    G --> H[Proximity Analysis]
+    H --> I[Meta-Review]
+    I --> J[Report]
+    J --> K[Human Review]
+```
+
 ## Providers
 
 - `mock`: deterministic offline search, metadata, and full-text-location fixtures.
@@ -249,6 +265,54 @@ python -m coscientist.cli compare-model-runs \
   runs/code-assistant-mock \
   runs/code-assistant-live-smoke
 ```
+
+## V1.5B Proximity And Meta-Review
+
+V1.5B runs remain offline and deterministic by default. They add:
+
+- `ProximityAgent`: structured claim/mechanism/assumption/prediction/experiment/evidence/lineage similarity.
+- `MetaReviewAgent`: artifact-aware process review with stopping assessment and next-round recommendations.
+- `GroundingAgent`: bounded grounding packet and deterministic grounding diagnostics.
+- Advisory feedback mode by default: recommendations are persisted but do not alter the next round.
+- Controlled feedback mode: supported by schema and decision artifacts, but disabled unless project configuration explicitly enables it.
+
+New artifacts:
+
+- `proximity_round_final.json`
+- `hypothesis_graph_round_final.json`
+- `clusters_round_final.json`
+- `search_space_coverage_round_final.json`
+- `meta_review_round_final.json`
+- `meta_review_decisions_round_final.json`
+- `grounding_packets_round_final.json`
+- `grounding_diagnostics_round_final.json`
+- `v15b_summary.json`
+
+Deterministic offline pilot:
+
+```bash
+PYTHONPATH=src python -m coscientist.cli run-project \
+  research-projects/code_assistant_fixture/project.yaml \
+  --run-id code-assistant-v15b
+
+PYTHONPATH=src python -m coscientist.cli validate-artifacts runs/code-assistant-v15b
+```
+
+Materials-synthesis preparation pilot:
+
+```bash
+PYTHONPATH=src python -m coscientist.cli run-project \
+  examples/materials_synthesis_grounded_pilot/project.yaml \
+  --run-id materials-grounded-v15b
+```
+
+Grounding modes:
+
+- `strict`: supported scientific claims must cite supplied evidence; metadata-only records cannot support claims.
+- `permissive`: supplied evidence remains primary; unverified background must be labeled and cannot raise evidence scores.
+- `off`: legacy behavior, clearly marked in artifacts.
+
+Limitations: V1.5B uses deterministic lexical structured similarity, not embeddings. Meta-review is an artifact-aware decision aid, not scientific proof. UI and interactive graph rendering are deferred.
 
 ## Cache
 

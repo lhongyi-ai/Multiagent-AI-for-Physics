@@ -1,0 +1,83 @@
+project_id: materials-synthesis-grounded-pilot
+title: Grounded synthesis mechanism pilot for intermetallic phase formation
+research_question: Which synthesis variables most plausibly determine whether a target intermetallic phase forms instead of competing binary or ternary phases, and which characterization observations would discriminate among the mechanisms?
+task_type: explanation
+background: >
+  This small offline pilot prepares the V1.5B workflow for later materials-synthesis
+  studies without making live literature or live model calls by default. It focuses on
+  phase formation mechanisms, competing phases, and discriminating characterization.
+scope: >
+  Use a small fixture corpus to exercise strict grounding, proximity analysis, meta-review,
+  and human-review artifacts. Do not claim a real synthesis route is validated.
+known_observations:
+  - Competing phases can dominate when temperature, stoichiometry, or reaction pathway favors lower-energy intermediates.
+  - Characterization should distinguish target-phase formation from binary or ternary impurity formation.
+constraints:
+  - Use fixture or existing corpus evidence only by default.
+  - Do not recommend hazardous laboratory execution.
+  - Treat all synthesis claims as hypotheses requiring independent validation.
+excluded_directions:
+  - Autonomous laboratory execution.
+  - Paywalled or unlicensed data retrieval.
+available_evidence:
+  - ../../research-projects/code_assistant_fixture/corpus.jsonl
+desired_output: A small set of grounded, competing phase-formation hypotheses with falsification tests.
+evaluation_criteria:
+  - relevance
+  - evidence_grounding
+  - testability
+  - falsifiability
+  - uncertainty_calibration
+validation_constraints:
+  - Must distinguish source-backed observations from synthesis inferences.
+  - Must not treat fixture evidence as proof of phase stability.
+maximum_literature_budget: 5
+maximum_model_call_budget: 80
+maximum_evolution_rounds: 2
+literature_fixture_path: ../../research-projects/code_assistant_fixture/corpus.jsonl
+literature:
+  mode: fixture
+  query_generation: explicit
+  queries:
+    - text: intermetallic phase formation competing phases synthesis variables characterization
+      providers: [mock]
+      origin: user
+  search_providers: [mock]
+  enrichment_providers: [mock]
+  max_queries: 3
+  max_results_per_query: 5
+  max_results_per_provider: 5
+  max_total_results: 5
+  max_total_requests: 5
+  max_requests_per_provider: 5
+  minimum_corpus_size: 1
+  cache_policy: offline-only
+v15b:
+  enabled: true
+  proximity:
+    enabled: true
+    method: lexical_structured
+    similarity_threshold: 0.72
+    duplicate_threshold: 0.9
+    include_lineage_edges: true
+    include_evidence_overlap: true
+  meta_review:
+    enabled: true
+    provider_mode: deterministic
+    feedback_mode: advisory
+    feed_into_next_round: false
+    max_recommendations: 10
+    require_artifact_references: true
+  grounding:
+    mode: strict
+    allow_unverified_background_knowledge: false
+    require_evidence_ids_for_supported_claims: true
+    require_exact_locations: true
+    max_evidence_items_per_hypothesis: 8
+    max_contradiction_items_per_hypothesis: 5
+    max_context_characters: 30000
+    prioritize_verified_full_text: true
+    include_metadata_only_records: false
+rubric_path: ../../research-projects/code_assistant_fixture/rubric.yaml
+created_at: 2026-06-23T00:00:00+00:00
+schema_version: v1

@@ -6,6 +6,7 @@ from typing import Literal
 from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 
 from coscientist.schemas.scholarly import ProjectLiteratureConfig
+from coscientist.schemas.v15b import V15BConfig
 
 
 TaskType = Literal[
@@ -43,6 +44,7 @@ class ResearchProjectSpec(BaseModel):
     literature_fixture_path: str | None = None
     rubric_path: str | None = None
     literature: ProjectLiteratureConfig = Field(default_factory=ProjectLiteratureConfig)
+    v15b: V15BConfig = Field(default_factory=V15BConfig)
     created_at: datetime
     schema_version: str = "v1"
 

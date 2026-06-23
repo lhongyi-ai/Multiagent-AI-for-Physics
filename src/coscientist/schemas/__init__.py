@@ -32,6 +32,24 @@ from coscientist.schemas.scholarly import (
 )
 from coscientist.schemas.review import Review, ReviewBatch
 from coscientist.schemas.run_state import RunState
+from coscientist.schemas.v15b import (
+    GroundingConfig,
+    GroundingDiagnostics,
+    GroundingEvidenceItem,
+    GroundingPacket,
+    HypothesisCluster,
+    HypothesisGraphEdge,
+    HypothesisGraphNode,
+    HypothesisSimilarity,
+    MetaReview,
+    MetaReviewConfig,
+    MetaReviewDecision,
+    ProximityAnalysis,
+    ProximityConfig,
+    SearchSpaceCoverage,
+    V15BConfig,
+    V15BSummary,
+)
 
 __all__ = [
     "Hypothesis",
@@ -46,7 +64,15 @@ __all__ = [
     "EvidenceClaim",
     "ExternalIdentifier",
     "FullTextLocation",
+    "GroundingConfig",
+    "GroundingDiagnostics",
+    "GroundingEvidenceItem",
+    "GroundingPacket",
+    "HypothesisCluster",
+    "HypothesisGraphEdge",
+    "HypothesisGraphNode",
     "HypothesisRanking",
+    "HypothesisSimilarity",
     "MetadataConflict",
     "MetadataFieldProvenance",
     "MetadataResolution",
@@ -55,6 +81,9 @@ __all__ = [
     "ModelProviderStatus",
     "ModelUsage",
     "ModelUsageSummary",
+    "MetaReview",
+    "MetaReviewConfig",
+    "MetaReviewDecision",
     "Paper",
     "PaperAuthor",
     "PairwiseBatch",
@@ -64,6 +93,8 @@ __all__ = [
     "ProviderStatus",
     "ProviderUsage",
     "ProjectLiteratureConfig",
+    "ProximityAnalysis",
+    "ProximityConfig",
     "RankingBatch",
     "ResearchProjectSpec",
     "LiteratureQueryRecord",
@@ -78,4 +109,7 @@ __all__ = [
     "RubricScore",
     "RunManifest",
     "SearchQuery",
+    "SearchSpaceCoverage",
+    "V15BConfig",
+    "V15BSummary",
 ]

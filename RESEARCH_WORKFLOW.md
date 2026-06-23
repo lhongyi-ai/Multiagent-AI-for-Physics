@@ -12,6 +12,8 @@ Current V1 implementation note: project runs now support a bounded scholarly lit
 
 Current V1.5A implementation note: project runs can use an explicitly gated OpenAI-compatible live model provider for smoke and bounded project runs while preserving mock as the default. Live model artifacts record sanitized model-call metadata, usage when reported by the provider, structured-output status, and repair attempts.
 
+Current V1.5B implementation note: offline project runs now persist structured proximity analysis, hypothesis graph artifacts, grounding packets and diagnostics, and artifact-aware meta-review recommendations. Meta-review runs in advisory mode by default; controlled feedback mode is represented by validated decision artifacts and requires explicit project configuration.
+
 ## 1. Scope
 
 This workflow supports research tasks across physics, mathematics, chemistry, engineering, computer science, AI, and interdisciplinary science. It is intended for problems where the answer may be unknown, contested, difficult to validate, or dependent on domain-specific evidence.
