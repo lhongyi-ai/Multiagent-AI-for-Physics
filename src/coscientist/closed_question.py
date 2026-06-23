@@ -60,6 +60,7 @@ def run_closed_question_project(
     evaluations: list[ClosedQuestionEvaluation] = []
     answers: list[FinalAnswer] = []
     contexts: list[ContextBuildRecord] = []
+    report_context: dict[str, dict[str, Any]] = {}
     total_calls = 0
     total_tokens = 0
 
@@ -101,6 +102,12 @@ def run_closed_question_project(
         write_json(run_dir / f"{prefix}_answer_evidence_matrix_round_0.json", cells)
         write_json(run_dir / f"{prefix}_final_answer.json", final)
         write_json(run_dir / f"{prefix}_closed_question_evaluation.json", evaluation)
+        report_context[question.question_id] = {
+            "question": question,
+            "cells": cells,
+            "links": links,
+            "corpus": _question_corpus(question, corpus),
+        }
 
     calibration = calibration_summary(project.project_id, run_id, evaluations, total_tokens)
     write_json(run_dir / "final_answers.json", answers)
@@ -114,7 +121,7 @@ def run_closed_question_project(
         "total_tokens": total_tokens,
         "cost": None,
     })
-    (run_dir / "report.md").write_text(build_closed_question_report(project, answers, evaluations, calibration), encoding="utf-8")
+    (run_dir / "report.md").write_text(build_closed_question_report(project, answers, evaluations, calibration, report_context=report_context), encoding="utf-8")
     (run_dir / "human_review.md").write_text(build_closed_question_human_review(project, answers), encoding="utf-8")
     return run_dir
 
@@ -545,11 +552,19 @@ def validate_closed_feedback_artifacts(experiment_dir: str | Path) -> list[str]:
     return errors
 
 
-def build_closed_question_report(project: ClosedQuestionProject, answers: list[FinalAnswer], evaluations: list[ClosedQuestionEvaluation], calibration: AnswerCalibrationSummary) -> str:
+def build_closed_question_report(
+    project: ClosedQuestionProject,
+    answers: list[FinalAnswer],
+    evaluations: list[ClosedQuestionEvaluation],
+    calibration: AnswerCalibrationSummary,
+    *,
+    report_context: dict[str, dict[str, Any]] | None = None,
+) -> str:
     lines = [f"# Closed Question Report: {project.title}", "", "> Offline deterministic closed-question evaluation. Do not treat outputs as scientific proof.", ""]
     eval_by_q = {item.question_id: item for item in evaluations}
     for answer in answers:
         evaluation = eval_by_q.get(answer.question_id)
+        context = (report_context or {}).get(answer.question_id)
         lines.extend([
             f"## {answer.question_id}",
             "",
@@ -563,6 +578,8 @@ def build_closed_question_report(project: ClosedQuestionProject, answers: list[F
             f"- Recommended next action: {answer.recommended_next_action}",
             "",
         ])
+        if context:
+            lines.extend(_evidence_interpretation_lines(context["question"], context["cells"], context["links"], context["corpus"]))
     lines.extend([
         "## Calibration",
         "",
@@ -572,6 +589,72 @@ def build_closed_question_report(project: ClosedQuestionProject, answers: list[F
         "",
     ])
     return "\n".join(lines)
+
+
+def _evidence_interpretation_lines(
+    question: ClosedQuestion,
+    cells: list[AnswerEvidenceCell],
+    links: list[HypothesisAnswerLink],
+    corpus: list[Paper],
+) -> list[str]:
+    cells_by_answer = {cell.answer_id: cell for cell in cells}
+    support_by_answer = {
+        option.answer_id: _stable_unique([evidence_id for link in links if link.answer_id == option.answer_id for evidence_id in link.supporting_evidence_ids])
+        for option in question.answer_options
+    }
+    contradict_by_answer = {
+        option.answer_id: _stable_unique([evidence_id for link in links if link.answer_id == option.answer_id for evidence_id in link.contradicting_evidence_ids])
+        for option in question.answer_options
+    }
+    paper_by_id = {paper.id: paper for paper in corpus}
+    lines = ["### Evidence Interpretation", ""]
+    for option in question.answer_options:
+        cell = cells_by_answer.get(option.answer_id)
+        support_ids = support_by_answer.get(option.answer_id, [])
+        contradict_ids = contradict_by_answer.get(option.answer_id, [])
+        support_text = _evidence_summary(support_ids, paper_by_id)
+        contradict_text = _evidence_summary(contradict_ids, paper_by_id)
+        if cell and cell.verified_support_count:
+            status = (
+                f"supported by {cell.verified_support_count} evidence item(s), "
+                f"{len(cell.independent_cluster_ids)} independent cluster(s), "
+                f"duplicate-adjusted support {cell.duplicate_adjusted_support:.1f}"
+            )
+        elif support_ids:
+            status = "mentioned by evidence but not counted as verified support"
+        else:
+            status = "not directly supported by current curated evidence"
+        if cell and cell.verified_contradiction_count:
+            status += f"; contradicted by {cell.verified_contradiction_count} item(s)"
+        lines.extend([
+            f"#### {option.answer_id}: {option.statement}",
+            "",
+            f"- Status: {status}.",
+            f"- Supporting evidence: {support_text}",
+            f"- Contradicting evidence: {contradict_text}",
+        ])
+        if cell and cell.unresolved_issues:
+            lines.append(f"- Unresolved issues: {'; '.join(cell.unresolved_issues)}")
+        lines.append("")
+    return lines
+
+
+def _evidence_summary(evidence_ids: list[str], paper_by_id: dict[str, Paper]) -> str:
+    if not evidence_ids:
+        return "none"
+    parts = []
+    for evidence_id in evidence_ids[:4]:
+        paper = paper_by_id.get(evidence_id)
+        if not paper:
+            parts.append(evidence_id)
+            continue
+        excerpt = (paper.abstract or paper.title).strip()
+        if len(excerpt) > 180:
+            excerpt = excerpt[:177].rstrip() + "..."
+        parts.append(f"{evidence_id} ({excerpt})")
+    if len(evidence_ids) > 4:
+        parts.append(f"+{len(evidence_ids) - 4} more")
+    return "; ".join(parts)
 
 
 def build_closed_question_human_review(project: ClosedQuestionProject, answers: list[FinalAnswer]) -> str:

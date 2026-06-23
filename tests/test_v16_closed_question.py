@@ -64,8 +64,15 @@ def test_cafe4al8_closed_pilot_outputs_mechanism_and_experiment_answers(tmp_path
     assert {item["question_id"] for item in evaluations} == {"cafe-mechanism", "cafe-next-experiment"}
     mechanism = read_json(run_dir / "cafe-mechanism_final_answer.json")
     experiment = read_json(run_dir / "cafe-next-experiment_final_answer.json")
+    report = (run_dir / "report.md").read_text(encoding="utf-8")
     assert mechanism["selected_answer_ids"] == ["F"]
     assert experiment["selected_answer_ids"] == ["icp_bulk"]
+    assert "### Evidence Interpretation" in report
+    assert "#### A: Pre-sealing air oxidation of Ca." in report
+    assert "#### B: High-temperature Ca loss or transport away from the melt." in report
+    assert "#### D: Preferential formation of Fe-Al or Al-rich competing phases." in report
+    assert "note-ca-loss-1" in report
+    assert "note-edx-1" in report
 
 
 def test_missing_ground_truth_produces_insufficient_evidence() -> None:
