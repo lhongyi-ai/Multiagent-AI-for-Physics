@@ -14,6 +14,7 @@ from coscientist.closed_question import (
     validate_closed_question_artifacts,
 )
 from coscientist.config import load_config, load_research_goal
+from coscientist.discovery import run_discovery_project, resume_discovery_checkpoint, validate_discovery_artifacts
 from coscientist.literature.http import NetworkDisabledError
 from coscientist.literature.pipeline import build_literature_pipeline
 from coscientist.orchestration.workflow import run_workflow
@@ -153,6 +154,19 @@ def build_parser() -> argparse.ArgumentParser:
 
     validate_closed = subcommands.add_parser("validate-closed-question", help="Validate V1.6 closed-question artifacts.")
     validate_closed.add_argument("run_or_experiment_dir")
+
+    run_discovery = subcommands.add_parser("run-discovery", help="Run a deterministic V1.7 scientific discovery search.")
+    run_discovery.add_argument("project")
+    run_discovery.add_argument("--runs-dir", default="runs")
+    run_discovery.add_argument("--run-id", default=None)
+    run_discovery.add_argument("--force", action="store_true")
+    run_discovery.add_argument("--stop-after-tasks", type=int, default=None)
+
+    resume_discovery = subcommands.add_parser("resume-discovery", help="Resume a deterministic V1.7 discovery checkpoint.")
+    resume_discovery.add_argument("checkpoint")
+
+    validate_discovery = subcommands.add_parser("validate-discovery", help="Validate V1.7 discovery artifacts.")
+    validate_discovery.add_argument("run_dir")
     return parser
 
 
@@ -449,6 +463,31 @@ def _validate_closed_question(args: argparse.Namespace) -> int:
     return 0
 
 
+def _run_discovery(args: argparse.Namespace) -> int:
+    output = run_discovery_project(args.project, runs_dir=args.runs_dir, run_id=args.run_id, force=args.force, stop_after_tasks=args.stop_after_tasks)
+    print(f"Discovery run: {Path(output).resolve()}")
+    print(f"Checkpoint: {(Path(output) / 'search_checkpoint.json').resolve()}")
+    print(f"Report: {(Path(output) / 'discovery_report.md').resolve()}")
+    return 0
+
+
+def _resume_discovery(args: argparse.Namespace) -> int:
+    output = resume_discovery_checkpoint(args.checkpoint)
+    print(f"Discovery resumed: {Path(output).resolve()}")
+    print(f"Report: {(Path(output) / 'discovery_report.md').resolve()}")
+    return 0
+
+
+def _validate_discovery(args: argparse.Namespace) -> int:
+    errors = validate_discovery_artifacts(args.run_dir)
+    if errors:
+        for error in errors:
+            print(f"Error: {error}")
+        return 2
+    print(f"Valid V1.7 discovery artifacts: {Path(args.run_dir).resolve()}")
+    return 0
+
+
 def _guard_live(provider_names: list[str], live_network: bool) -> None:
     live_providers = {"openalex", "crossref", "unpaywall", "arxiv"}
     if any(name in live_providers for name in provider_names) and not live_network:
@@ -501,6 +540,12 @@ def main(argv: list[str] | None = None) -> int:
             return _compare_closed_feedback(args)
         if args.command == "validate-closed-question":
             return _validate_closed_question(args)
+        if args.command == "run-discovery":
+            return _run_discovery(args)
+        if args.command == "resume-discovery":
+            return _resume_discovery(args)
+        if args.command == "validate-discovery":
+            return _validate_discovery(args)
     except (ValidationError, ValueError, ProviderError, CompletedRunError, NetworkDisabledError) as exc:
         print(f"Error: {exc}")
         return 2

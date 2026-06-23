@@ -279,6 +279,75 @@ PYTHONPATH=src python -m coscientist.cli run-project \
   --run-id cafe4al8-live-controlled
 ```
 
+## V1.7 Scientific Discovery Search Runtime
+
+V1.7 adds a deterministic search runtime for open-ended scientific discovery problems. It is not a new live agent stack. The runtime keeps the search local and bounded: it formalizes a problem, archives candidate solutions, runs cheap and standard verifier plugins, selects a verifier-weighted beam, performs bounded tournament comparisons, records plateau diagnostics, checkpoints state, and produces an expert-review package.
+
+```mermaid
+flowchart TD
+    A[ScientificProblem] --> B[Candidate archive]
+    B --> C[Task queue]
+    C --> D[Cheap filters]
+    D --> E[Verifier plugins]
+    E --> F[Beam selection]
+    F --> G[Bounded tournament]
+    G --> H[Plateau and failure diagnostics]
+    H --> I[Checkpoint and resume]
+    I --> J[Discovery report and expert review]
+```
+
+Default V1.7 projects use `model_mode: mock`, `literature_mode: fixture` or `existing`, `grounding_mode: strict`, zero model calls, and no network access. Verifiers are deterministic Python plugins and errors are isolated into verifier results instead of crashing the run.
+
+Run the deterministic discovery fixture:
+
+```bash
+PYTHONPATH=src python -m coscientist.cli run-discovery \
+  examples/discovery_search_fixture/project.yaml \
+  --runs-dir runs \
+  --run-id discovery-fixture \
+  --force
+
+PYTHONPATH=src python -m coscientist.cli validate-discovery runs/discovery-fixture
+```
+
+Test checkpoint and resume:
+
+```bash
+PYTHONPATH=src python -m coscientist.cli run-discovery \
+  examples/discovery_search_fixture/project.yaml \
+  --runs-dir runs \
+  --run-id discovery-interrupted \
+  --stop-after-tasks 2 \
+  --force
+
+PYTHONPATH=src python -m coscientist.cli resume-discovery \
+  runs/discovery-interrupted/search_checkpoint.json
+```
+
+V1.7 artifacts include:
+
+- `discovery_project.json` and `scientific_problem.json`: immutable project/problem snapshots.
+- `problem_formalization.json`: normalized problem constraints and search-space summary.
+- `candidate_archive.jsonl`: all candidates, scores, evidence links, status, lineage, and verifier-result links.
+- `candidate_lineage_graph.json`: parent graph for cycle checks and resume.
+- `candidate_status_history.jsonl`: status transitions with reasons.
+- `candidate_failure_catalog.json`: cheap-filter and verifier failure categories.
+- `search_tasks.jsonl`: task queue state, dependencies, budgets, and result artifacts.
+- `verifier_results.jsonl`: deterministic verifier verdicts and checks.
+- `beam_selection.json` and `tournament_comparisons.jsonl`: bounded search selection artifacts.
+- `plateau_history.json`: score and lineage stagnation diagnostics.
+- `search_checkpoint.json`: resumable queue/archive/verifier state with project and corpus hashes.
+- `expert_review.md` and `expert_feedback.jsonl`: human-review prompts and persisted local feedback.
+- `discovery_report.md` and `model_usage.json`: summary and zero-call budget accounting for offline runs.
+
+The optional frontend facade is intentionally thin and backend-backed:
+
+```bash
+PYTHONPATH=src python -m coscientist.frontend
+```
+
+Import `coscientist.frontend.create_app()` to wire a local UI later without changing the discovery backend. The current facade supports loading a project, running a fixture, validating artifacts, and persisting expert feedback.
+
 ## Live Network And Model Opt-In
 
 Live network access cannot happen accidentally. Literature APIs and live LLMs use separate permissions.

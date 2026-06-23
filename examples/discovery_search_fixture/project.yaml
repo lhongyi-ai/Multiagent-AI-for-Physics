@@ -1,0 +1,208 @@
+schema_version: v17
+project_id: discovery-search-fixture
+title: Offline discovery search fixture
+model_mode: mock
+literature_mode: fixture
+grounding_mode: strict
+random_seed: 11
+problem:
+  problem_id: toy-materials-mechanism
+  title: Toy Ca-Fe-Al mechanism search
+  precise_statement: Search for candidate explanations and discriminating checks for a Ca-poor recovered crystal outcome in a local Ca-Fe-Al synthesis fixture.
+  problem_type: mechanism_discovery
+  scientific_domain: materials_synthesis
+  candidate_types: [hypothesis, counterexample, mechanistic_model, experiment_plan]
+  known_constraints:
+    - constraint_id: c-offline
+      description: Use only fixture evidence and deterministic verifiers.
+      hard: true
+  success_criteria:
+    - criterion_id: s-verified
+      description: Candidate preserves evidence references, predicts observables, and survives deterministic verifier checks.
+  failure_criteria:
+    - criterion_id: f-missing-falsification
+      description: Candidate lacks falsification criteria or has invalid references.
+      severity: high
+  observable_targets:
+    - observable_id: ca-bulk
+      description: Bulk Ca concentration of recovered crystals.
+      units: atomic fraction
+  accepted_evidence_types: [fixture_excerpt, user_observation]
+  excluded_claims: [scientific proof, autonomous lab execution]
+  known_baselines: [insufficient evidence baseline]
+  corpus_scope: Small local fixture; not a complete literature review.
+  human_notes:
+    - This benchmark tests the search runtime, not scientific truth.
+  provenance: [examples/discovery_search_fixture/project.yaml]
+evidence_ids: [exp-edx-1, note-edx-1, note-bulk-1, note-ca-loss-1]
+initial_candidates:
+  - candidate_id: cand-modest-pass
+    problem_id: toy-materials-mechanism
+    candidate_type: experiment_plan
+    title: Bulk composition first
+    summary: Use bulk ICP composition before mechanism-specific claims.
+    formal_representation: "CaFe4Al8 discriminator: bulk Ca measurement before loss attribution."
+    assumptions:
+      - EDX may not represent bulk composition.
+    construction_or_model: Measure bulk Ca and compare to target stoichiometry.
+    predicted_observables:
+      - ICP bulk Ca distinguishes real Ca-poor crystals from EDX undercount.
+    falsification_conditions:
+      - ICP bulk Ca agrees with EDX near-zero Ca and no surface bias is found.
+    parent_ids: []
+    root_candidate_id: cand-modest-pass
+    lineage_depth: 0
+    generation_strategy: mainstream_extension
+    linked_evidence_ids: [exp-edx-1, note-edx-1, note-bulk-1]
+    linked_cluster_ids: []
+    verification_result_ids: []
+    failure_reason_ids: []
+    novelty_status: unknown
+    scientific_status: proposed
+    component_scores:
+      llm_prior: 0.55
+    aggregate_search_score: 0.2
+    created_step: 0
+    updated_step: 0
+    provenance: [fixture]
+  - candidate_id: cand-duplicate-a
+    problem_id: toy-materials-mechanism
+    candidate_type: hypothesis
+    title: Ca transport hypothesis A
+    summary: High-temperature Ca loss or transport explains Ca-poor crystals.
+    formal_representation: "CaFe4Al8 loss model: Ca transport away from melt."
+    assumptions:
+      - Calcium can transport away from hot melt.
+    construction_or_model: Ca loss path to ampoule wall or residual flux.
+    predicted_observables:
+      - Ca-rich deposits appear away from crystals.
+    falsification_conditions:
+      - No Ca in deposits or residual flux.
+    parent_ids: []
+    root_candidate_id: cand-duplicate-a
+    lineage_depth: 0
+    generation_strategy: mainstream_extension
+    linked_evidence_ids: [note-ca-loss-1]
+    linked_cluster_ids: []
+    verification_result_ids: []
+    failure_reason_ids: []
+    novelty_status: unknown
+    scientific_status: proposed
+    component_scores: {}
+    aggregate_search_score: 0.1
+    created_step: 0
+    updated_step: 0
+    provenance: [fixture]
+  - candidate_id: cand-duplicate-b
+    problem_id: toy-materials-mechanism
+    candidate_type: hypothesis
+    title: Ca transport hypothesis B
+    summary: Duplicate high-temperature Ca loss or transport explanation.
+    formal_representation: "CaFe4Al8 loss model: Ca transport away from melt."
+    assumptions:
+      - Calcium can transport away from hot melt.
+    construction_or_model: Same duplicate Ca transport model.
+    predicted_observables:
+      - Ca-rich deposits appear away from crystals.
+    falsification_conditions:
+      - No Ca in deposits or residual flux.
+    parent_ids: []
+    root_candidate_id: cand-duplicate-b
+    lineage_depth: 0
+    generation_strategy: mainstream_extension
+    linked_evidence_ids: [note-ca-loss-1]
+    linked_cluster_ids: []
+    verification_result_ids: []
+    failure_reason_ids: []
+    novelty_status: duplicate
+    scientific_status: proposed
+    component_scores: {}
+    aggregate_search_score: 0.1
+    created_step: 0
+    updated_step: 0
+    provenance: [fixture]
+  - candidate_id: cand-misleading-high
+    problem_id: toy-materials-mechanism
+    candidate_type: mechanistic_model
+    title: High-scoring but invalid no-Ca model
+    summary: A confident model claims novelty but encodes no Ca in a Ca-containing target.
+    formal_representation: Ca0Fe4Al8 model with known failure.
+    assumptions:
+      - not Ca is present
+      - Ca is present
+    construction_or_model: Ca0Fe4Al8.
+    predicted_observables:
+      - "observed: no Ca contradicts target CaFe4Al8."
+    falsification_conditions:
+      - "observed: no Ca contradicts target CaFe4Al8."
+    parent_ids: []
+    root_candidate_id: cand-misleading-high
+    lineage_depth: 0
+    generation_strategy: extreme_case_search
+    linked_evidence_ids: [exp-edx-1]
+    linked_cluster_ids: []
+    verification_result_ids: []
+    failure_reason_ids: []
+    novelty_status: duplicate
+    scientific_status: proposed
+    component_scores:
+      llm_prior: 0.95
+    aggregate_search_score: 0.95
+    created_step: 0
+    updated_step: 0
+    provenance: [fixture]
+  - candidate_id: cand-counterexample
+    problem_id: toy-materials-mechanism
+    candidate_type: counterexample
+    title: Counterexample branch for EDX-only conclusion
+    summary: "Counterexample: EDX-only evidence could undercount bulk Ca."
+    formal_representation: If ICP finds bulk Ca, EDX-only conclusion fails.
+    assumptions:
+      - EDX is surface/local.
+    construction_or_model: Counterexample test using bulk composition.
+    predicted_observables:
+      - ICP bulk Ca differs from EDX near-zero Ca.
+    falsification_conditions:
+      - ICP confirms near-zero bulk Ca.
+    parent_ids: []
+    root_candidate_id: cand-counterexample
+    lineage_depth: 0
+    generation_strategy: counterexample_search
+    linked_evidence_ids: [exp-edx-1, note-edx-1]
+    linked_cluster_ids: []
+    verification_result_ids: []
+    failure_reason_ids: []
+    novelty_status: possibly_novel
+    scientific_status: proposed
+    component_scores: {}
+    aggregate_search_score: 0.2
+    created_step: 0
+    updated_step: 0
+    provenance: [fixture]
+search:
+  mode: beam
+  max_steps: 12
+  beam_width: 4
+  max_candidates_total: 40
+  max_children_per_candidate: 3
+  max_lineage_depth: 5
+  preserve_diverse_clusters: true
+  preserve_counterexample_branch: true
+  tournament_max_candidates: 5
+  tournament_max_comparisons: 6
+  tournament_debate_turns: 1
+  plateau_window: 2
+  plateau_minimum_improvement: 0.02
+  token_budget: 12000
+  model_call_budget: 0
+  verifier_call_budget: 80
+enabled_verifiers:
+  - schema_constraint
+  - logical_consistency
+  - evidence_consistency
+  - counterexample_hook
+  - experimental_consistency
+  - materials_formula
+evaluator_only_ground_truth:
+  best_candidate: cand-modest-pass
+created_at: 2026-06-23T00:00:00+00:00
