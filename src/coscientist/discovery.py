@@ -29,6 +29,17 @@ from coscientist.schemas.v17 import (
     TournamentComparison,
     VerifierResult,
 )
+from coscientist.schemas.v20 import (
+    AdaptiveBudgetAllocation,
+    CandidateRating,
+    EloTournamentState,
+    ImplementationComparison,
+    ProviderRoutingPlan,
+    ReproductionResult,
+    ReproductionRun,
+    RoleModelRoute,
+    StrategyAllocation,
+)
 from coscientist.verifiers.registry import default_verifier_registry
 
 
@@ -233,6 +244,9 @@ class _SearchState:
         self.completed_task_count = len(queue.completed_ids())
         self.beam_history: list[BeamSelection] = []
         self.tournament: list[TournamentComparison] = []
+        self.elo_ratings: dict[str, CandidateRating] = {}
+        self.deep_comparison_pairings: list[str] = []
+        self.reproduction_results: list[ReproductionResult] = []
         self.plateau_history: list[dict[str, float | int | str]] = []
         self.strategy_metrics = {strategy: SearchStrategyMetrics(strategy=strategy) for strategy in ["mainstream_extension", "counterexample_search", "assumption_relaxation", "repair_failed_candidate", "combine_partial_solutions", "cross_domain_transfer"]}
         self.budgets_spent = {"model_calls": 0, "tokens": 0, "verifier_calls": 0}
@@ -324,8 +338,11 @@ def _execute_task(state: _SearchState, task: SearchTask) -> TaskResult:
         return TaskResult(task_id=task.task_id, status="completed", artifact_ids=["verifier_results.jsonl"])
     if task.task_type == "compare_candidates":
         state.beam_history.append(_select_beam(state))
-        state.tournament.extend(_bounded_tournament(state))
-        return TaskResult(task_id=task.task_id, status="completed", artifact_ids=["beam_selection.json", "tournament_comparisons.jsonl"])
+        if state.project.search.tournament_ranking_mode in {"elo", "bradley_terry"}:
+            state.tournament.extend(_rating_tournament(state))
+        else:
+            state.tournament.extend(_bounded_tournament(state))
+        return TaskResult(task_id=task.task_id, status="completed", artifact_ids=["beam_selection.json", "tournament_comparisons.jsonl", "elo_tournament_state.json"])
     if task.task_type in {"repair_candidate", "cross_domain_transfer", "search_counterexample"}:
         generated = _derive_candidate_from_task(state, task)
         if generated:
@@ -426,6 +443,114 @@ def _bounded_tournament(state: _SearchState) -> list[TournamentComparison]:
     return comparisons
 
 
+def _rating_tournament(state: _SearchState) -> list[TournamentComparison]:
+    pool = sorted(state.archive.active_candidates(), key=lambda item: (item.aggregate_search_score, item.candidate_id), reverse=True)[: state.project.search.tournament_max_candidates]
+    completed = {_pair_key(item.candidate_a_id, item.candidate_b_id) for item in state.tournament}
+    comparisons: list[TournamentComparison] = []
+    limit = state.project.search.tournament_max_comparisons
+    candidate_ids = {candidate.candidate_id for candidate in pool}
+    for candidate in pool:
+        if candidate.candidate_id not in state.elo_ratings:
+            state.elo_ratings[candidate.candidate_id] = CandidateRating(
+                candidate_id=candidate.candidate_id,
+                rating=round(state.project.search.tournament_initial_rating + candidate.aggregate_search_score * 100.0, 3),
+                uncertainty=state.project.search.tournament_initial_uncertainty,
+            )
+    candidate_lookup = {candidate.candidate_id: candidate for candidate in pool}
+    candidate_pairs: list[tuple[float, float, str, str]] = []
+    for index, left in enumerate(pool):
+        for right in pool[index + 1:]:
+            key = _pair_key(left.candidate_id, right.candidate_id)
+            if key in completed:
+                continue
+            rating_gap = abs(state.elo_ratings[left.candidate_id].rating - state.elo_ratings[right.candidate_id].rating)
+            top_score = max(left.aggregate_search_score, right.aggregate_search_score)
+            candidate_pairs.append((rating_gap, -top_score, left.candidate_id, right.candidate_id))
+    for _, _, left_id, right_id in sorted(candidate_pairs):
+        if len(comparisons) + len(state.tournament) >= limit:
+            break
+        if left_id not in candidate_ids or right_id not in candidate_ids:
+            continue
+        left = candidate_lookup[left_id]
+        right = candidate_lookup[right_id]
+        score_a, score_b = _comparison_scores(left, right)
+        winner_id = None
+        if score_a > score_b:
+            winner_id = left_id
+        elif score_b > score_a:
+            winner_id = right_id
+        deep = _allocate_deep_comparison(state, left_id, right_id)
+        _update_rating_pair(state, left_id, right_id, score_a, score_b)
+        comparisons.append(TournamentComparison(
+            comparison_id=f"cmp-{left_id}-{right_id}",
+            candidate_a_id=left_id,
+            candidate_b_id=right_id,
+            winner_id=winner_id,
+            rationale=f"{state.project.search.tournament_ranking_mode} deterministic verifier-weighted update; {'deeper comparison allocated' if deep else 'single bounded comparison'}",
+            single_turn=not deep,
+        ))
+    return comparisons
+
+
+def _comparison_scores(left: CandidateSolution, right: CandidateSolution) -> tuple[float, float]:
+    left_score = left.aggregate_search_score
+    right_score = right.aggregate_search_score
+    if abs(left_score - right_score) < 1e-9:
+        return 0.5, 0.5
+    return (1.0, 0.0) if left_score > right_score else (0.0, 1.0)
+
+
+def _update_rating_pair(state: _SearchState, left_id: str, right_id: str, score_a: float, score_b: float) -> None:
+    left = state.elo_ratings[left_id]
+    right = state.elo_ratings[right_id]
+    k_factor = state.project.search.tournament_k_factor
+    if state.project.search.tournament_ranking_mode == "bradley_terry":
+        k_factor *= 0.75
+    expected_a = 1.0 / (1.0 + 10 ** ((right.rating - left.rating) / 400.0))
+    expected_b = 1.0 - expected_a
+    left_rating = left.rating + k_factor * (score_a - expected_a)
+    right_rating = right.rating + k_factor * (score_b - expected_b)
+    state.elo_ratings[left_id] = left.model_copy(update={
+        "rating": round(left_rating, 3),
+        "uncertainty": round(max(40.0, left.uncertainty * 0.92), 3),
+        "comparisons": left.comparisons + 1,
+        "wins": left.wins + int(score_a > score_b),
+        "losses": left.losses + int(score_b > score_a),
+        "draws": left.draws + int(score_a == score_b),
+    })
+    state.elo_ratings[right_id] = right.model_copy(update={
+        "rating": round(right_rating, 3),
+        "uncertainty": round(max(40.0, right.uncertainty * 0.92), 3),
+        "comparisons": right.comparisons + 1,
+        "wins": right.wins + int(score_b > score_a),
+        "losses": right.losses + int(score_a > score_b),
+        "draws": right.draws + int(score_a == score_b),
+    })
+
+
+def _allocate_deep_comparison(state: _SearchState, left_id: str, right_id: str) -> bool:
+    if len(state.deep_comparison_pairings) >= state.project.search.tournament_max_deep_comparisons:
+        return False
+    key = _pair_key(left_id, right_id)
+    if key in state.deep_comparison_pairings:
+        return False
+    left = state.elo_ratings[left_id]
+    right = state.elo_ratings[right_id]
+    if abs(left.rating - right.rating) <= state.project.search.tournament_close_match_gap:
+        state.deep_comparison_pairings.append(key)
+        return True
+    ranked = sorted(state.elo_ratings.values(), key=lambda item: item.rating, reverse=True)
+    top_ids = {item.candidate_id for item in ranked[: max(2, state.project.search.beam_width)]}
+    if left_id in top_ids and right_id in top_ids:
+        state.deep_comparison_pairings.append(key)
+        return True
+    return False
+
+
+def _pair_key(left_id: str, right_id: str) -> str:
+    return "::".join(sorted([left_id, right_id]))
+
+
 def _detect_plateau(state: _SearchState) -> bool:
     scores = [candidate.aggregate_search_score for candidate in state.archive.active_candidates()]
     best = max(scores) if scores else 0.0
@@ -516,15 +641,24 @@ def _write_checkpoint(state: _SearchState) -> None:
 
 def _write_outputs(state: _SearchState) -> None:
     _refresh_strategy_metrics(state)
+    state.reproduction_results = _independent_reproduction_results(state)
     write_jsonl(state.run_dir / "candidate_archive.jsonl", list(state.archive.candidates.values()))
     write_json(state.run_dir / "candidate_lineage_graph.json", state.archive.lineage_graph())
     write_jsonl(state.run_dir / "candidate_status_history.jsonl", state.archive.status_history)
     write_json(state.run_dir / "candidate_failure_catalog.json", _failure_catalog(state.archive))
     write_json(state.run_dir / "search_strategy_metrics.json", list(state.strategy_metrics.values()))
+    allocation = _adaptive_budget_allocation(state)
+    write_json(state.run_dir / "adaptive_budget_allocation.json", allocation)
+    write_json(state.run_dir / "provider_routing_plan.json", _provider_routing_plan(state))
     write_jsonl(state.run_dir / "search_tasks.jsonl", state.queue.list())
     write_jsonl(state.run_dir / "verifier_results.jsonl", state.verifier_results)
     write_json(state.run_dir / "beam_selection.json", state.beam_history[-1] if state.beam_history else None)
     write_jsonl(state.run_dir / "tournament_comparisons.jsonl", state.tournament)
+    write_json(state.run_dir / "elo_tournament_state.json", _elo_tournament_state(state))
+    write_jsonl(state.run_dir / "reproduction_results.jsonl", state.reproduction_results)
+    write_json(state.run_dir / "reproduction_discrepancies.json", _reproduction_discrepancies(state.reproduction_results))
+    write_jsonl(state.run_dir / "claim_ledger.jsonl", _claim_ledger(state))
+    write_jsonl(state.run_dir / "prediction_ledger.jsonl", _prediction_ledger(state))
     write_json(state.run_dir / "plateau_history.json", state.plateau_history)
     write_json(state.run_dir / "model_usage.json", {"model_mode": "mock", "provider": "mock", "call_count": state.budgets_spent["model_calls"], "total_tokens": state.budgets_spent["tokens"]})
     if not (state.run_dir / "expert_feedback.jsonl").exists():
@@ -556,10 +690,247 @@ def _refresh_strategy_metrics(state: _SearchState) -> None:
             })
 
 
+def _adaptive_budget_allocation(state: _SearchState) -> AdaptiveBudgetAllocation:
+    _refresh_strategy_metrics(state)
+    metrics = sorted(state.strategy_metrics.values(), key=lambda item: item.strategy)
+    duplicate_strategies = {
+        state.archive.candidates[candidate_id].generation_strategy
+        for group in state.archive.duplicate_groups()
+        for candidate_id in group
+        if candidate_id in state.archive.candidates
+    }
+    falsified_by_strategy: Counter[str] = Counter(candidate.generation_strategy for candidate in state.archive.candidates.values() if candidate.scientific_status in {"falsified", "cheap_filter_failed"})
+    raw_weights: dict[str, float] = {}
+    for metric in metrics:
+        historical_yield = max(0.0, min(1.0, (metric.verification_pass_rate * 0.45) + (metric.novelty_yield * 0.2) + (min(1.0, metric.score_improvement) * 0.35)))
+        duplicate_penalty = 0.35 if metric.strategy in duplicate_strategies else 0.0
+        falsification_penalty = min(0.5, falsified_by_strategy[metric.strategy] * 0.15)
+        preserve = metric.strategy == "counterexample_search" and state.project.search.preserve_minimum_contrarian_branches > 0
+        if state.project.search.adaptive_compute_enabled:
+            raw_weights[metric.strategy] = max(0.02 if preserve else 0.0, historical_yield * (1.0 - duplicate_penalty) * (1.0 - falsification_penalty))
+        else:
+            raw_weights[metric.strategy] = 1.0
+    if not any(raw_weights.values()) and metrics:
+        raw_weights = {metric.strategy: 1.0 for metric in metrics}
+    allocations = _bounded_allocations(state, metrics, raw_weights, duplicate_strategies, falsified_by_strategy)
+    verifier_stage_yield = _verifier_stage_yield(state.verifier_results)
+    lineage_yield = _lineage_yield(state)
+    return AdaptiveBudgetAllocation(
+        project_id=state.project.project_id,
+        run_id=state.run_id,
+        total_token_budget=state.project.search.token_budget,
+        total_model_call_budget=state.project.search.model_call_budget,
+        total_verifier_call_budget=state.project.search.verifier_call_budget,
+        allocations=allocations,
+        verifier_stage_yield=verifier_stage_yield,
+        role_yield={"generation": _mean([metric.novelty_yield for metric in metrics]), "comparison": _mean([metric.score_improvement for metric in metrics]), "verification": _mean(list(verifier_stage_yield.values()))},
+        lineage_yield=lineage_yield,
+    )
+
+
+def _bounded_allocations(state: _SearchState, metrics: list[SearchStrategyMetrics], raw_weights: dict[str, float], duplicate_strategies: set[str], falsified_by_strategy: Counter[str]) -> list[StrategyAllocation]:
+    total_weight = sum(raw_weights.values()) or 1.0
+    remaining_tokens = state.project.search.token_budget
+    remaining_model_calls = state.project.search.model_call_budget
+    remaining_verifier_calls = state.project.search.verifier_call_budget
+    allocations: list[StrategyAllocation] = []
+    for index, metric in enumerate(metrics):
+        last = index == len(metrics) - 1
+        share = raw_weights.get(metric.strategy, 0.0) / total_weight
+        preserve = metric.strategy == "counterexample_search" and state.project.search.preserve_minimum_contrarian_branches > 0
+        token_budget = remaining_tokens if last else int(state.project.search.token_budget * share)
+        model_call_budget = remaining_model_calls if last else int(state.project.search.model_call_budget * share)
+        verifier_call_budget = remaining_verifier_calls if last else int(state.project.search.verifier_call_budget * share)
+        if preserve and state.project.search.verifier_call_budget and verifier_call_budget == 0:
+            verifier_call_budget = min(1, remaining_verifier_calls)
+        remaining_tokens = max(0, remaining_tokens - token_budget)
+        remaining_model_calls = max(0, remaining_model_calls - model_call_budget)
+        remaining_verifier_calls = max(0, remaining_verifier_calls - verifier_call_budget)
+        historical_yield = max(0.0, min(1.0, (metric.verification_pass_rate * 0.45) + (metric.novelty_yield * 0.2) + (min(1.0, metric.score_improvement) * 0.35)))
+        duplicate_penalty = 0.35 if metric.strategy in duplicate_strategies else 0.0
+        falsification_penalty = min(0.5, falsified_by_strategy[metric.strategy] * 0.15)
+        allocations.append(StrategyAllocation(
+            strategy=metric.strategy,
+            historical_yield=round(historical_yield, 3),
+            duplicate_penalty=round(duplicate_penalty, 3),
+            falsification_penalty=round(falsification_penalty, 3),
+            token_budget=token_budget,
+            model_call_budget=model_call_budget,
+            verifier_call_budget=verifier_call_budget,
+            preserve_branch=preserve,
+            rationale="Preserved contrarian branch floor." if preserve else "Allocated from verifier pass, novelty, score improvement, duplicate and falsification history.",
+        ))
+    return allocations
+
+
+def _provider_routing_plan(state: _SearchState) -> ProviderRoutingPlan:
+    roles = ["generation", "review", "comparison", "deep_reasoning", "novelty_audit", "meta_review"]
+    routes = []
+    for role in roles:
+        configured_model = state.project.search.role_model_routing.get(role, "deterministic-mock")
+        routes.append(RoleModelRoute(
+            role=role,  # type: ignore[arg-type]
+            provider="mock",
+            model=configured_model,
+            model_mode="mock",
+            max_context_characters=min(12000, state.project.search.token_budget * 4 if state.project.search.token_budget else 0),
+            max_output_tokens=900,
+            live_permission_required=False,
+        ))
+    return ProviderRoutingPlan(project_id=state.project.project_id, run_id=state.run_id, live_model_enabled=False, routes=routes)
+
+
+def _elo_tournament_state(state: _SearchState) -> EloTournamentState:
+    for candidate in state.archive.active_candidates():
+        if candidate.candidate_id not in state.elo_ratings:
+            state.elo_ratings[candidate.candidate_id] = CandidateRating(
+                candidate_id=candidate.candidate_id,
+                rating=round(state.project.search.tournament_initial_rating + candidate.aggregate_search_score * 100.0, 3),
+                uncertainty=state.project.search.tournament_initial_uncertainty,
+            )
+    return EloTournamentState(
+        ranking_mode=state.project.search.tournament_ranking_mode,
+        ratings=sorted(state.elo_ratings.values(), key=lambda item: item.candidate_id),
+        completed_pairings=sorted({_pair_key(item.candidate_a_id, item.candidate_b_id) for item in state.tournament}),
+        deep_comparison_pairings=sorted(state.deep_comparison_pairings),
+        maximum_comparisons=state.project.search.tournament_max_comparisons,
+    )
+
+
+def _independent_reproduction_results(state: _SearchState) -> list[ReproductionResult]:
+    top = sorted(state.archive.active_candidates(), key=lambda item: (item.aggregate_search_score, item.candidate_id), reverse=True)[: max(1, min(2, state.project.search.beam_width))]
+    results: list[ReproductionResult] = []
+    for candidate in top:
+        direct = _direct_reproduction_score(candidate, state.verifier_results)
+        independent = _independent_reproduction_score(candidate, state.verifier_results)
+        if direct is None and independent is None:
+            outcome = "inconclusive"
+            difference = None
+            summary = "No verifier outputs were available for independent reproduction."
+        else:
+            left = direct or 0.0
+            right = independent or 0.0
+            difference = abs(left - right)
+            if difference <= 0.1:
+                outcome = "reproduced"
+            elif difference <= 0.3:
+                outcome = "partially_reproduced"
+            else:
+                outcome = "not_reproduced"
+            summary = f"Independent paths differed by {difference:.3f}; discrepancy preserved."
+        path_a = ReproductionRun(run_id=f"repr-{candidate.candidate_id}-direct", path_id="direct_verifier_mean", method="Mean stored verifier scores without recomputing check ratios.", output_value=direct, output_summary="direct verifier-score reproduction")
+        path_b = ReproductionRun(run_id=f"repr-{candidate.candidate_id}-ratio", path_id="check_ratio_reimplementation", method="Independently recomputed pass ratios from check lists.", output_value=independent, output_summary="independent check-ratio reproduction")
+        comparison = ImplementationComparison(candidate_id=candidate.candidate_id, compared_path_ids=[path_a.path_id, path_b.path_id], tolerance=0.1, absolute_difference=difference, discrepancy_summary=summary)
+        results.append(ReproductionResult(
+            reproduction_result_id=f"repr-{candidate.candidate_id}",
+            candidate_id=candidate.candidate_id,
+            requested_at=datetime.now(UTC),
+            runs=[path_a, path_b],
+            comparison=comparison,
+            outcome=outcome,  # type: ignore[arg-type]
+        ))
+    return results
+
+
+def _direct_reproduction_score(candidate: CandidateSolution, verifier_results: list[VerifierResult]) -> float | None:
+    scores = [result.score for result in verifier_results if result.candidate_id == candidate.candidate_id]
+    return round(sum(scores) / len(scores), 3) if scores else None
+
+
+def _independent_reproduction_score(candidate: CandidateSolution, verifier_results: list[VerifierResult]) -> float | None:
+    ratios = []
+    for result in verifier_results:
+        if result.candidate_id != candidate.candidate_id:
+            continue
+        total = len(result.checks_passed) + len(result.checks_failed)
+        if total:
+            ratios.append(len(result.checks_passed) / total)
+    return round(sum(ratios) / len(ratios), 3) if ratios else None
+
+
+def _reproduction_discrepancies(results: list[ReproductionResult]) -> dict[str, Any]:
+    return {
+        "schema_version": "v20",
+        "discrepancies": [
+            {
+                "candidate_id": item.candidate_id,
+                "outcome": item.outcome,
+                "absolute_difference": item.comparison.absolute_difference,
+                "summary": item.comparison.discrepancy_summary,
+            }
+            for item in results
+        ],
+        "validation_status": "validated",
+    }
+
+
+def _claim_ledger(state: _SearchState) -> list[dict[str, Any]]:
+    reproduction_by_candidate = {item.candidate_id: item.outcome for item in state.reproduction_results}
+    records = []
+    for candidate in sorted(state.archive.candidates.values(), key=lambda item: item.candidate_id):
+        status = {
+            "promising": "supported_by_current_data",
+            "partially_verified": "internally_consistent",
+            "falsified": "falsified",
+            "cheap_filter_failed": "withdrawn",
+            "expert_review_required": "awaiting_expert_review",
+        }.get(candidate.scientific_status, "draft")
+        records.append({
+            "schema_version": "v20",
+            "claim_id": f"claim-{candidate.candidate_id}",
+            "claim_type": "mechanistic" if candidate.candidate_type in {"hypothesis", "mechanistic_model"} else "experimental_recommendation",
+            "candidate_ids": [candidate.candidate_id],
+            "claim_text": candidate.summary,
+            "evidence_ids": candidate.linked_evidence_ids,
+            "verifier_result_ids": candidate.verification_result_ids,
+            "status": status,
+            "novelty_status": candidate.novelty_status,
+            "reproduction_status": reproduction_by_candidate.get(candidate.candidate_id, "not_requested"),
+            "uncertainty": round(1.0 - candidate.aggregate_search_score, 3),
+            "scope": "bounded deterministic offline discovery run",
+        })
+    return records
+
+
+def _prediction_ledger(state: _SearchState) -> list[dict[str, Any]]:
+    records = []
+    for candidate in sorted(state.archive.candidates.values(), key=lambda item: item.candidate_id):
+        for index, prediction in enumerate(candidate.predicted_observables):
+            records.append({
+                "schema_version": "v20",
+                "prediction_id": f"pred-{candidate.candidate_id}-{index + 1}",
+                "candidate_id": candidate.candidate_id,
+                "observable": prediction,
+                "status": "testable_now" if candidate.linked_evidence_ids else "proposed",
+                "used_for_fitting": False,
+                "preregistered": False,
+                "evaluation_status": "not_evaluated",
+            })
+    return records
+
+
+def _verifier_stage_yield(verifier_results: list[VerifierResult]) -> dict[str, float]:
+    grouped: dict[str, list[VerifierResult]] = defaultdict(list)
+    for result in verifier_results:
+        grouped[result.stage].append(result)
+    return {stage: round(len([item for item in items if item.verdict in {"pass", "partial"}]) / max(1, len(items)), 3) for stage, items in sorted(grouped.items())}
+
+
+def _lineage_yield(state: _SearchState) -> dict[str, float]:
+    grouped: dict[str, list[CandidateSolution]] = defaultdict(list)
+    for candidate in state.archive.candidates.values():
+        grouped[candidate.root_candidate_id or candidate.candidate_id].append(candidate)
+    return {root: round(max(candidate.aggregate_search_score for candidate in candidates), 3) for root, candidates in sorted(grouped.items())}
+
+
+def _mean(values: list[float]) -> float:
+    return round(sum(values) / len(values), 3) if values else 0.0
+
+
 def validate_discovery_artifacts(run_dir: str | Path) -> list[str]:
     path = Path(run_dir)
     errors: list[str] = []
-    required = ["discovery_project.json", "scientific_problem.json", "candidate_archive.jsonl", "candidate_lineage_graph.json", "candidate_status_history.jsonl", "candidate_failure_catalog.json", "search_strategy_metrics.json", "search_tasks.jsonl", "verifier_results.jsonl", "search_checkpoint.json", "discovery_report.md", "expert_review.md", "expert_feedback.jsonl"]
+    required = ["discovery_project.json", "scientific_problem.json", "candidate_archive.jsonl", "candidate_lineage_graph.json", "candidate_status_history.jsonl", "candidate_failure_catalog.json", "search_strategy_metrics.json", "adaptive_budget_allocation.json", "provider_routing_plan.json", "search_tasks.jsonl", "verifier_results.jsonl", "search_checkpoint.json", "discovery_report.md", "expert_review.md", "expert_feedback.jsonl", "elo_tournament_state.json", "reproduction_results.jsonl", "reproduction_discrepancies.json", "claim_ledger.jsonl", "prediction_ledger.jsonl"]
     for name in required:
         if not (path / name).exists():
             errors.append(f"missing discovery artifact: {name}")
@@ -600,6 +971,38 @@ def validate_discovery_artifacts(run_dir: str | Path) -> list[str]:
         errors.append("beam selection exceeds beam_width")
     if len(read_jsonl(path / "tournament_comparisons.jsonl")) > project.search.tournament_max_comparisons:
         errors.append("tournament comparison limit exceeded")
+    try:
+        elo_state = EloTournamentState.model_validate_json((path / "elo_tournament_state.json").read_text(encoding="utf-8"))
+        if len(elo_state.deep_comparison_pairings) > project.search.tournament_max_deep_comparisons:
+            errors.append("deep comparison budget exceeded")
+        if {rating.candidate_id for rating in elo_state.ratings} - candidate_ids:
+            errors.append("elo tournament references missing candidate")
+    except Exception as exc:
+        errors.append(f"invalid elo tournament state: {exc}")
+    try:
+        allocation = AdaptiveBudgetAllocation.model_validate_json((path / "adaptive_budget_allocation.json").read_text(encoding="utf-8"))
+        if allocation.total_model_call_budget != project.search.model_call_budget:
+            errors.append("adaptive allocation model-call budget mismatch")
+    except Exception as exc:
+        errors.append(f"invalid adaptive budget allocation: {exc}")
+    try:
+        routing = ProviderRoutingPlan.model_validate_json((path / "provider_routing_plan.json").read_text(encoding="utf-8"))
+        if any(route.model_mode == "live" for route in routing.routes) and project.model_mode != "live":
+            errors.append("provider routing enables live model without project live mode")
+    except Exception as exc:
+        errors.append(f"invalid provider routing plan: {exc}")
+    for item in read_jsonl(path / "reproduction_results.jsonl"):
+        result = ReproductionResult.model_validate_json(json.dumps(item))
+        if result.candidate_id not in candidate_ids:
+            errors.append(f"reproduction references missing candidate: {result.candidate_id}")
+    for item in read_jsonl(path / "claim_ledger.jsonl"):
+        if set(item.get("candidate_ids", [])) - candidate_ids:
+            errors.append(f"claim references missing candidate: {item.get('claim_id')}")
+        if set(item.get("verifier_result_ids", [])) - verifier_ids:
+            errors.append(f"claim references missing verifier result: {item.get('claim_id')}")
+    for item in read_jsonl(path / "prediction_ledger.jsonl"):
+        if item.get("candidate_id") not in candidate_ids:
+            errors.append(f"prediction references missing candidate: {item.get('prediction_id')}")
     for artifact in [*path.rglob("*.json"), *path.rglob("*.jsonl")]:
         text = artifact.read_text(encoding="utf-8").lower()
         if "openai_api_key" in text or re.search(r"\bsk-[a-z0-9_-]{16,}", text) or re.search(r"\bbearer\s+[a-z0-9_.-]{12,}", text):
@@ -633,6 +1036,9 @@ def _discovery_report(state: _SearchState) -> str:
         f"- Surviving lineages: {len({candidate.root_candidate_id or candidate.candidate_id for candidate in active})}",
         f"- Verifier calls: {state.budgets_spent['verifier_calls']}",
         f"- Model calls: {state.budgets_spent['model_calls']}",
+        f"- Tournament mode: {state.project.search.tournament_ranking_mode}",
+        f"- Deep comparisons allocated: {len(state.deep_comparison_pairings)}",
+        f"- Reproduction checks: {len(state.reproduction_results)}",
         f"- Plateau events: {sum(1 for item in state.plateau_history if item.get('plateau') == 'true')}",
         "",
         "## Top Candidates",
@@ -643,6 +1049,10 @@ def _discovery_report(state: _SearchState) -> str:
     lines.extend(["", "## Common Failure Modes", ""])
     for reason, ids in _failure_catalog(state.archive).items():
         lines.append(f"- {reason}: {', '.join(ids)}")
+    if state.reproduction_results:
+        lines.extend(["", "## Independent Reproduction", ""])
+        for result in state.reproduction_results:
+            lines.append(f"- `{result.candidate_id}`: {result.outcome}; {result.comparison.discrepancy_summary}")
     lines.extend(["", "Expert review remains required before treating any candidate as validated.", ""])
     return "\n".join(lines)
 

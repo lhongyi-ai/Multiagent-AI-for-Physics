@@ -94,6 +94,56 @@ class OfflineDiscoveryFrontend:
             for item in read_jsonl(path / "verifier_results.jsonl")
         ]
 
+    def tournament_rows(self, run_dir: str | Path) -> list[dict[str, object]]:
+        path = Path(run_dir)
+        if not (path / "tournament_comparisons.jsonl").exists():
+            return []
+        return read_jsonl(path / "tournament_comparisons.jsonl")
+
+    def elo_rating_rows(self, run_dir: str | Path) -> list[dict[str, object]]:
+        path = Path(run_dir) / "elo_tournament_state.json"
+        if not path.exists():
+            return []
+        return read_json(path).get("ratings", [])
+
+    def strategy_performance_rows(self, run_dir: str | Path) -> list[dict[str, object]]:
+        path = Path(run_dir) / "search_strategy_metrics.json"
+        return read_json(path) if path.exists() else []
+
+    def adaptive_budget_rows(self, run_dir: str | Path) -> list[dict[str, object]]:
+        path = Path(run_dir) / "adaptive_budget_allocation.json"
+        return read_json(path).get("allocations", []) if path.exists() else []
+
+    def task_queue_rows(self, run_dir: str | Path) -> list[dict[str, object]]:
+        path = Path(run_dir) / "search_tasks.jsonl"
+        return read_jsonl(path) if path.exists() else []
+
+    def checkpoint_summary(self, run_dir: str | Path) -> dict[str, object]:
+        path = Path(run_dir) / "search_checkpoint.json"
+        if not path.exists():
+            path = Path(run_dir) / "campaign_checkpoint.json"
+        return read_json(path) if path.exists() else {}
+
+    def claim_ledger_rows(self, run_dir: str | Path) -> list[dict[str, object]]:
+        path = Path(run_dir) / "claim_ledger.jsonl"
+        return read_jsonl(path) if path.exists() else []
+
+    def prediction_ledger_rows(self, run_dir: str | Path) -> list[dict[str, object]]:
+        path = Path(run_dir) / "prediction_ledger.jsonl"
+        return read_jsonl(path) if path.exists() else []
+
+    def reproduction_rows(self, run_dir: str | Path) -> list[dict[str, object]]:
+        path = Path(run_dir) / "reproduction_results.jsonl"
+        return read_jsonl(path) if path.exists() else []
+
+    def reproduction_discrepancies(self, run_dir: str | Path) -> dict[str, object]:
+        path = Path(run_dir) / "reproduction_discrepancies.json"
+        return read_json(path) if path.exists() else {}
+
+    def provider_routing_rows(self, run_dir: str | Path) -> list[dict[str, object]]:
+        path = Path(run_dir) / "provider_routing_plan.json"
+        return read_json(path).get("routes", []) if path.exists() else []
+
     def report_text(self, run_dir: str | Path) -> str:
         path = Path(run_dir)
         for name in ["atomic_discovery_report.md", "discovery_report.md", "report.md"]:
@@ -154,6 +204,26 @@ def create_gradio_workbench(*, runs_dir: str | Path = "runs"):
         errors = service.validate_atomic(run_dir) if (Path(run_dir) / "atomic_benchmark_metrics.json").exists() else service.validate(run_dir)
         return "valid" if not errors else "\n".join(errors)
 
+    def inspect_search_os(run_dir: str):
+        return (
+            service.elo_rating_rows(run_dir),
+            service.tournament_rows(run_dir),
+            service.strategy_performance_rows(run_dir),
+            service.adaptive_budget_rows(run_dir),
+            service.verifier_rows(run_dir),
+            service.reproduction_rows(run_dir),
+            service.task_queue_rows(run_dir),
+            service.checkpoint_summary(run_dir),
+        )
+
+    def inspect_ledgers(run_dir: str):
+        return (
+            service.claim_ledger_rows(run_dir),
+            service.prediction_ledger_rows(run_dir),
+            service.provider_routing_rows(run_dir),
+            service.reproduction_discrepancies(run_dir),
+        )
+
     def feedback(run_dir: str, candidate_id: str, decision: str, rationale: str) -> str:
         return service.persist_feedback(run_dir, candidate_id=candidate_id, decision=decision, rationale=rationale)
 
@@ -178,6 +248,21 @@ def create_gradio_workbench(*, runs_dir: str | Path = "runs"):
             candidates = gr.Dataframe(label="Candidate explorer")
         with gr.Tab("Verifier Inspector"):
             verifiers = gr.Dataframe(label="Verifier results")
+        with gr.Tab("Search OS"):
+            inspect_button = gr.Button("Inspect Current Run")
+            elo = gr.Dataframe(label="Elo / tournament ratings")
+            tournament = gr.Dataframe(label="Tournament comparisons")
+            strategy = gr.Dataframe(label="Strategy performance")
+            allocation = gr.Dataframe(label="Adaptive budget allocation")
+            reproduction = gr.Dataframe(label="Independent reproduction")
+            tasks = gr.Dataframe(label="Task queue")
+            checkpoint = gr.JSON(label="Checkpoint")
+        with gr.Tab("Ledgers"):
+            ledger_button = gr.Button("Load Ledgers")
+            claims = gr.Dataframe(label="Claim ledger")
+            predictions = gr.Dataframe(label="Prediction ledger")
+            routing = gr.Dataframe(label="Per-role provider routing")
+            discrepancies = gr.JSON(label="Reproduction discrepancies")
         with gr.Tab("Reports"):
             report = gr.Textbox(lines=24, label="Report")
         with gr.Tab("Expert Review"):
@@ -189,6 +274,8 @@ def create_gradio_workbench(*, runs_dir: str | Path = "runs"):
         run_button.click(run_atomic, inputs=[project, run_id], outputs=[run_dir, metrics, candidates, verifiers, report])
         campaign_button.click(run_campaign, inputs=[campaign_project, run_id], outputs=[run_dir, metrics, sources, identifiability, report])
         validate_button.click(validate, inputs=[run_dir], outputs=[validation])
+        inspect_button.click(inspect_search_os, inputs=[run_dir], outputs=[elo, tournament, strategy, allocation, verifiers, reproduction, tasks, checkpoint])
+        ledger_button.click(inspect_ledgers, inputs=[run_dir], outputs=[claims, predictions, routing, discrepancies])
         feedback_button.click(feedback, inputs=[run_dir, candidate_id, decision, rationale], outputs=[feedback_path])
     return app
 

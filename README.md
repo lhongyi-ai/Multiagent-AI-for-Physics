@@ -689,6 +689,31 @@ V1 project runs write `resolved_configuration.json`, `literature_queries.jsonl`,
 
 Only retrieve documents from clearly authorized locations, such as arXiv public documents, Unpaywall-reported open-access locations, or explicitly configured local documents. The system does not bypass paywalls, authentication, robots restrictions, or access-control systems.
 
+## V2 Search OS Upgrades
+
+The discovery runtime now includes optional, offline V2 support infrastructure:
+
+- budget-limited Elo or Bradley-Terry tournament ranking;
+- adaptive compute allocation by strategy, lineage, verifier stage, and model role;
+- provider-neutral per-role model routing with deterministic mock fallback;
+- independent reproduction checks for top candidates;
+- artifact-backed workbench views for candidates, tournament state, budgets, verifiers, reproduction, tasks, checkpoints, claims, predictions, and expert feedback.
+
+Defaults remain deterministic and offline. Existing V1 through V1.9 workflows continue to run without enabling the new tournament mode.
+
+Example:
+
+```bash
+PYTHONPATH=src python -m coscientist.cli run-discovery \
+  examples/discovery_search_fixture/project.yaml \
+  --run-id discovery-v20 \
+  --force
+
+PYTHONPATH=src python -m coscientist.cli validate-discovery runs/discovery-v20
+```
+
+See `docs/v20_search_upgrades.md` for configuration details and artifact names.
+
 ## Testing
 
 Default tests are offline and deterministic:

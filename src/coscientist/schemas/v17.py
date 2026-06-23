@@ -259,6 +259,15 @@ class SearchConfig(BaseModel):
     tournament_max_candidates: int = Field(default=6, ge=0, le=50)
     tournament_max_comparisons: int = Field(default=8, ge=0, le=200)
     tournament_debate_turns: int = Field(default=1, ge=1, le=5)
+    tournament_ranking_mode: Literal["bounded", "elo", "bradley_terry"] = "bounded"
+    tournament_initial_rating: float = Field(default=1000.0, ge=0.0)
+    tournament_k_factor: float = Field(default=24.0, ge=0.0, le=100.0)
+    tournament_initial_uncertainty: float = Field(default=350.0, ge=0.0)
+    tournament_close_match_gap: float = Field(default=35.0, ge=0.0)
+    tournament_max_deep_comparisons: int = Field(default=2, ge=0, le=50)
+    adaptive_compute_enabled: bool = True
+    preserve_minimum_contrarian_branches: int = Field(default=1, ge=0, le=10)
+    role_model_routing: dict[str, str] = Field(default_factory=dict)
     plateau_window: int = Field(default=3, ge=1, le=20)
     plateau_minimum_improvement: float = Field(default=0.02, ge=0.0, le=1.0)
     token_budget: int = Field(default=12000, ge=0)
