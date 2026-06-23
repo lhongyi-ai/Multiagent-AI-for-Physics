@@ -1,0 +1,230 @@
+campaign:
+  schema_version: v19
+  campaign_id: rb87-real-spectroscopy
+  problem_id: rb87-effective-hamiltonian
+  domain: atomic_amo_physics
+  pilot_name: 87Rb D-line hyperfine and low-field Zeeman campaign
+  research_question: Given curated 87Rb spectroscopy observations, which bounded effective Hamiltonian family best reconstructs observed structure and predicts held-out observables?
+  dataset_manifest_id: rb87-dataset-v1
+  train_split_id: rb87-train-v1
+  validation_split_id: rb87-validation-v1
+  test_split_id: rb87-test-v1
+  candidate_families:
+    - independent_levels
+    - hyperfine_only
+    - hyperfine_linear_field
+    - overparameterized_extra_term
+    - ambiguous_reparameterization
+  allowed_hamiltonian_terms: [diagonal_energy, hyperfine_scalar, zeeman_linear, custom_matrix_literal]
+  allowed_verifiers: [atomic_schema, numerical_diagonalization, spectrum_consistency, selection_rules, limiting_cases, parameter_fit, counterexample_parameter_search]
+  search_configuration: {beam_width: 4, max_steps: 8}
+  budget_configuration: {model_calls: 0, token_budget: 0, scientific_package_calls: 200}
+  success_criteria:
+    - recover best-supported bounded family without leaking held-out answers
+    - preserve equivalent candidate groups
+    - produce discriminating observable proposals
+  failure_criteria:
+    - force a unique winner when observations are insufficient
+    - leak evaluator-only test values to agent-visible artifacts
+  novelty_policy: benchmark known Rb87 structure only; no new-physics claim
+  expert_review_policy: expert review required before any scientific interpretation
+  stopping_policy: stop after deterministic comparison and stress tests
+  status: drafted
+  provenance: [examples/rb87_real_spectroscopy/project.yaml]
+sources:
+  - schema_version: v19
+    source_id: src-rb87-steck-local
+    source_type: public_reference
+    title: Rubidium 87 D Line Data local curated subset
+    authors_or_owner: [Daniel A. Steck]
+    version_or_revision: local manual subset, revision not asserted by software fixture
+    access_date: 2026-06-23
+    original_locator: public Rubidium 87 D Line Data reference, not queried during tests
+    local_snapshot_path: sources/rb87_curated_observations.csv
+    license_or_usage_note: Local manually curated small numerical subset for software verification; consult original reference before scientific use.
+    citation_text: Steck, Rubidium 87 D Line Data, public reference data sheet.
+    fields_used: [ground hyperfine interval, D-line optical anchors]
+    transformations_applied: [CSV transcription, frequency normalization to MHz]
+    limitations:
+      - not a complete Rb87 reference
+      - grouped excited-state labels are simplified for bounded software pilot
+    provenance: [examples/rb87_real_spectroscopy/sources/rb87_curated_observations.csv]
+  - schema_version: v19
+    source_id: src-rb87-local-method-note
+    source_type: human_curation_note
+    title: Local low-field Zeeman proxy note
+    authors_or_owner: [Multiagent-AI-for-Physics maintainers]
+    version_or_revision: v1
+    access_date: 2026-06-23
+    original_locator: local repository curated note, no live query
+    local_snapshot_path: sources/rb87_curated_observations.csv
+    license_or_usage_note: Repository-local benchmark note for deterministic verifier testing.
+    citation_text: Local curation note for low-field slope proxy in V1.9 benchmark.
+    fields_used: [low-field Zeeman slope proxy]
+    transformations_applied: [CSV transcription]
+    limitations:
+      - slope is a bounded benchmark proxy, not apparatus-specific calibration
+    provenance: [examples/rb87_real_spectroscopy/sources/rb87_curated_observations.csv]
+candidate_family_templates:
+  - family_id: independent_levels
+    display_name: Independent-level baseline
+    role: intentionally incomplete baseline
+    parameter_count: 1
+    parameter_priors: {d2_center_mhz: {lower: 384230480.0, upper: 384230490.0, provenance: src-rb87-steck-local}}
+    parameter_bounds: {d2_center_mhz: [384230480.0, 384230490.0]}
+    fit_parameters: {d2_center_mhz: 384230484.4685}
+    selection_rule_score: 1.0
+    limiting_case_score: 1.0
+    identifiability_condition: 1.0
+    counterexample_survival: 0.2
+    atomic_model:
+      schema_version: v18
+      model_id: rb87-independent-levels
+      candidate_id: independent_levels
+      model_family: finite_level_hamiltonian
+      basis_states: [{state_id: g, label: ground}, {state_id: e, label: excited}]
+      hamiltonian_terms: [{term_id: optical-anchor, term_type: diagonal_energy, coefficient: 384230484.4685, unit: MHz, state_ids: [e]}]
+      parameters: []
+      requested_observables: [{observable_id: transitions, observable_type: transition_frequencies, unit: MHz}]
+      field_configuration: {}
+      units: {hamiltonian: Hz}
+      solver_preferences: {}
+      assumptions: [independent optical levels]
+      limits_to_check: {}
+    provenance: [src-rb87-steck-local]
+  - family_id: hyperfine_only
+    display_name: Hyperfine-only effective model
+    role: train-equivalent but field-incomplete baseline
+    parameter_count: 2
+    parameter_priors:
+      ground_hfs_mhz: {lower: 6800.0, upper: 6900.0, provenance: src-rb87-steck-local}
+      d2_center_mhz: {lower: 384230480.0, upper: 384230490.0, provenance: src-rb87-steck-local}
+    parameter_bounds: {ground_hfs_mhz: [6800.0, 6900.0], d2_center_mhz: [384230480.0, 384230490.0]}
+    fit_parameters: {ground_hfs_mhz: 6834.682610904, d2_center_mhz: 384230484.4685, d1_offset_mhz: 0.0}
+    selection_rule_score: 1.0
+    limiting_case_score: 1.0
+    identifiability_condition: 2.0
+    counterexample_survival: 0.4
+    atomic_model:
+      schema_version: v18
+      model_id: rb87-hyperfine-only
+      candidate_id: hyperfine_only
+      model_family: hyperfine_structure
+      basis_states: [{state_id: F1, label: F=1}, {state_id: F2, label: F=2}]
+      hamiltonian_terms: [{term_id: hfs, term_type: hyperfine_scalar, coefficient: 6834.682610904, unit: MHz, state_ids: [F2]}]
+      parameters: []
+      requested_observables: [{observable_id: hyperfine, observable_type: transition_frequencies, unit: MHz}]
+      field_configuration: {}
+      units: {hamiltonian: Hz}
+      solver_preferences: {}
+      assumptions: [zero-field hyperfine model]
+      limits_to_check: {}
+    provenance: [src-rb87-steck-local]
+  - family_id: hyperfine_linear_field
+    display_name: Hyperfine plus low-field linear model
+    role: best-supported bounded reference family
+    parameter_count: 3
+    parameter_priors:
+      ground_hfs_mhz: {lower: 6800.0, upper: 6900.0, provenance: src-rb87-steck-local}
+      d2_center_mhz: {lower: 384230480.0, upper: 384230490.0, provenance: src-rb87-steck-local}
+      zeeman_slope_mhz_per_gauss: {lower: 0.5, upper: 0.9, provenance: src-rb87-local-method-note}
+    parameter_bounds: {ground_hfs_mhz: [6800.0, 6900.0], d2_center_mhz: [384230480.0, 384230490.0], zeeman_slope_mhz_per_gauss: [0.5, 0.9]}
+    fit_parameters: {ground_hfs_mhz: 6834.682610904, d2_center_mhz: 384230484.4685, d1_center_mhz: 377107463.380, zeeman_slope_mhz_per_gauss: 0.700}
+    selection_rule_score: 1.0
+    limiting_case_score: 1.0
+    identifiability_condition: 12.0
+    counterexample_survival: 1.0
+    atomic_model:
+      schema_version: v18
+      model_id: rb87-hyperfine-linear-field
+      candidate_id: hyperfine_linear_field
+      model_family: zeeman_splitting
+      basis_states: [{state_id: F1, label: F=1}, {state_id: F2, label: F=2}]
+      hamiltonian_terms:
+        - {term_id: hfs, term_type: hyperfine_scalar, coefficient: 6834.682610904, unit: MHz, state_ids: [F2]}
+        - {term_id: zeeman, term_type: zeeman_linear, coefficient: 0.700, unit: MHz, state_ids: [F2]}
+      parameters: []
+      requested_observables: [{observable_id: field-slope, observable_type: field_sweep_spectrum, unit: MHz}]
+      field_configuration: {B_gauss: 1.0}
+      units: {hamiltonian: Hz}
+      solver_preferences: {}
+      assumptions: [low-field linear regime only]
+      limits_to_check: {}
+    provenance: [src-rb87-steck-local, src-rb87-local-method-note]
+  - family_id: overparameterized_extra_term
+    display_name: Overparameterized extra-term model
+    role: challenge complexity and held-out behavior
+    parameter_count: 5
+    parameter_priors: {extra_quadratic_proxy: {lower: -0.2, upper: 0.2, provenance: src-rb87-local-method-note}}
+    parameter_bounds: {extra_quadratic_proxy: [-0.2, 0.2]}
+    fit_parameters: {ground_hfs_mhz: 6834.682610904, d2_center_mhz: 384230484.4685, d1_center_mhz: 377107463.380, zeeman_slope_mhz_per_gauss: 0.700, extra_quadratic_proxy: 0.08}
+    selection_rule_score: 1.0
+    limiting_case_score: 0.8
+    identifiability_condition: 10000000.0
+    counterexample_survival: 0.5
+    atomic_model:
+      schema_version: v18
+      model_id: rb87-overparameterized
+      candidate_id: overparameterized_extra_term
+      model_family: effective_spectroscopy_model
+      basis_states: [{state_id: F1, label: F=1}, {state_id: F2, label: F=2}, {state_id: X, label: unsupported-extra}]
+      hamiltonian_terms:
+        - {term_id: hfs, term_type: hyperfine_scalar, coefficient: 6834.682610904, unit: MHz, state_ids: [F2]}
+        - {term_id: extra, term_type: stark_quadratic, coefficient: 0.08, unit: MHz, state_ids: [X]}
+      parameters: []
+      requested_observables: [{observable_id: field-slope, observable_type: field_sweep_spectrum, unit: MHz}]
+      field_configuration: {B_gauss: 1.0}
+      units: {hamiltonian: Hz}
+      solver_preferences: {}
+      assumptions: [extra unsupported low-field term]
+      limits_to_check: {}
+    provenance: [src-rb87-local-method-note]
+  - family_id: ambiguous_reparameterization
+    display_name: Ambiguous train-equivalent reparameterization
+    role: observationally equivalent on train split
+    parameter_count: 3
+    parameter_priors: {ground_hfs_mhz: {lower: 6800.0, upper: 6900.0, provenance: src-rb87-steck-local}}
+    parameter_bounds: {ground_hfs_mhz: [6800.0, 6900.0]}
+    fit_parameters: {ground_hfs_mhz: 6834.682610904, d2_center_mhz: 384230484.4685, d1_center_mhz: 377107463.380, zeeman_slope_mhz_per_gauss: 0.55}
+    selection_rule_score: 1.0
+    limiting_case_score: 1.0
+    identifiability_condition: 5000000.0
+    counterexample_survival: 0.7
+    atomic_model:
+      schema_version: v18
+      model_id: rb87-ambiguous-reparameterization
+      candidate_id: ambiguous_reparameterization
+      model_family: effective_spectroscopy_model
+      basis_states: [{state_id: F1, label: F=1}, {state_id: F2, label: F=2}]
+      hamiltonian_terms: [{term_id: hfs-renormalized, term_type: hyperfine_scalar, coefficient: 6834.682610904, unit: MHz, state_ids: [F2]}]
+      parameters: []
+      requested_observables: [{observable_id: field-slope, observable_type: field_sweep_spectrum, unit: MHz}]
+      field_configuration: {}
+      units: {hamiltonian: Hz}
+      solver_preferences: {}
+      assumptions: [train-equivalent effective parameterization]
+      limits_to_check: {}
+    provenance: [src-rb87-steck-local]
+evaluator_only_reference:
+  hidden_from_agents: true
+  hidden_reference:
+    best_supported_family: hyperfine_linear_field
+    reference_parameters:
+      ground_hfs_mhz: 6834.682610904
+      d2_center_mhz: 384230484.4685
+      d1_center_mhz: 377107463.380
+      zeeman_slope_mhz_per_gauss: 0.700
+open_problem_campaign_template:
+  schema_version: v19
+  template_id: v20-open-problem-template
+  precise_unresolved_claim: Replace this with a bounded unresolved Atomic/AMO claim.
+  current_best_known_baselines: [best evaluated model, simplest effective model]
+  candidate_representation: AtomicModelSpec with curated observation records.
+  automated_verifier_coverage: [unit checks, spectrum residuals, selection rules, identifiability, stress tests]
+  unresolved_uncertainty: [source conflicts, apparatus systematics, missing physical effects]
+  novelty_definition: Improvement over explicitly named baselines under held-out tests.
+  falsification_criteria: [held-out residual exceeds tolerance, selection rules fail, counterexample found]
+  expert_contact_or_review_plan: Named domain expert review before claims.
+  allowed_external_tools: [local scientific packages only unless explicitly authorized]
+  stopping_conditions: [budget exhausted, model-space insufficient, expert review requested]
+  publication_and_disclosure_policy: No public scientific claim without expert review and source audit.

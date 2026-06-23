@@ -436,6 +436,66 @@ create_gradio_workbench().launch()
 
 The workbench uses the same backend services as the CLI for project loading, deterministic atomic runs, validation, candidate tables, verifier inspection, reports, and appended expert feedback. Live model and live network modes remain disabled by default.
 
+## V1.9 Real-Data Atomic Spectroscopy Campaign
+
+V1.9 moves from synthetic Atomic/AMO fixtures to the first bounded real-data campaign protocol. The included pilot uses a local curated subset for `87Rb` D-line, hyperfine, and low-field Zeeman checks. It is offline and reproducible; it does not scrape or query public websites during tests or default runs.
+
+Truth layers are separated:
+
+- Agent-visible observations: train and validation observations, source limitations, uncertainties, and split rationale.
+- Evaluator-only reference: hidden best-supported family and held-out test values.
+- Human interpretation: reports and append-only expert feedback.
+
+Run source curation only:
+
+```bash
+PYTHONPATH=src python -m coscientist.cli curate-atomic-campaign \
+  examples/rb87_real_spectroscopy/project.yaml \
+  --runs-dir runs \
+  --run-id rb87-curation \
+  --force
+```
+
+Run the full campaign:
+
+```bash
+PYTHONPATH=src python -m coscientist.cli run-atomic-campaign \
+  examples/rb87_real_spectroscopy/project.yaml \
+  --runs-dir runs \
+  --run-id rb87-campaign \
+  --force
+
+PYTHONPATH=src python -m coscientist.cli validate-atomic-campaign runs/rb87-campaign
+```
+
+Compare deterministic campaign baselines:
+
+```bash
+PYTHONPATH=src python -m coscientist.cli compare-atomic-campaign \
+  examples/rb87_real_spectroscopy/project.yaml \
+  --runs-dir runs \
+  --experiment-id rb87-campaign-baselines \
+  --force
+```
+
+Campaign artifacts include:
+
+- `source_manifest.json`, `source_snapshots.jsonl`
+- `atomic_transitions_raw.jsonl`, `atomic_transitions_normalized.jsonl`
+- `curation_decisions.jsonl`, `curation_conflicts.jsonl`
+- `dataset_manifest.json`, `data_split_manifest.json`, `dataset_validation.json`
+- `agent_visible_observations.jsonl`, `evaluator_only_reference.json`
+- `candidate_family_templates.json`, `atomic_model_candidates.jsonl`
+- `fit_results.jsonl`, `model_comparison.json`, `model_comparison_components.jsonl`
+- `identifiability_results.jsonl`, `equivalence_classes.json`
+- `held_out_predictions.jsonl`, `discriminating_observable_proposals.jsonl`
+- `stress_test_results.jsonl`, `leave_one_observation_out.jsonl`, `source_sensitivity.json`
+- `campaign_metrics.json`, `campaign_baseline_comparison.json`
+- `campaign_report.md`, `campaign_expert_review.md`, `expert_feedback.jsonl`
+- `open_problem_campaign_template.json`
+
+Interpretation language is deliberately bounded: “best-supported within the tested candidate space”, “observationally equivalent under current data”, “not identifiable at current precision”, or “requires expert review.” V1.9 does not claim new Rb physics or full microscopic completeness.
+
 ## Live Network And Model Opt-In
 
 Live network access cannot happen accidentally. Literature APIs and live LLMs use separate permissions.

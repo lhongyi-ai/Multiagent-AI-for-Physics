@@ -2,9 +2,11 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from importlib import metadata
+from datetime import UTC, datetime
 from pathlib import Path
 
 from coscientist.atomic.discovery import run_atomic_discovery_project, validate_atomic_discovery_artifacts
+from coscientist.atomic.campaign import run_atomic_campaign_project, validate_atomic_campaign_artifacts
 from coscientist.discovery import (
     load_discovery_project,
     persist_expert_feedback,
@@ -38,7 +40,16 @@ class OfflineDiscoveryFrontend:
         return validate_discovery_artifacts(run_dir)
 
     def persist_feedback(self, run_dir: str | Path, *, candidate_id: str, decision: str, rationale: str, reviewer: str = "local-human") -> str:
-        return str(persist_expert_feedback(run_dir, candidate_id=candidate_id, decision=decision, rationale=rationale, reviewer=reviewer))
+        path = Path(run_dir)
+        if (path / "candidate_archive.jsonl").exists():
+            return str(persist_expert_feedback(run_dir, candidate_id=candidate_id, decision=decision, rationale=rationale, reviewer=reviewer))
+        feedback_path = path / "expert_feedback.jsonl"
+        existing = read_jsonl(feedback_path) if feedback_path.exists() else []
+        record = {"schema_version": "v19", "candidate_id": candidate_id, "decision": decision, "rationale": rationale, "reviewer": reviewer, "created_at": datetime.now(UTC).isoformat()}
+        from coscientist.pilot.artifacts import write_jsonl
+
+        write_jsonl(feedback_path, [*existing, record])
+        return str(feedback_path)
 
     def dependency_status(self) -> dict[str, str]:
         return {name: _version(name) for name in ["sympy", "numpy", "scipy", "qutip", "gradio"]}
@@ -95,6 +106,29 @@ class OfflineDiscoveryFrontend:
         path = Path(run_dir) / "atomic_benchmark_metrics.json"
         return read_json(path) if path.exists() else {}
 
+    def run_campaign_fixture(self, project_path: str | Path, *, run_id: str = "campaign-frontend-smoke", force: bool = True) -> str:
+        run_dir = run_atomic_campaign_project(project_path, runs_dir=self.runs_dir, run_id=run_id, force=force)
+        return str(run_dir)
+
+    def validate_campaign(self, run_dir: str | Path) -> list[str]:
+        return validate_atomic_campaign_artifacts(run_dir)
+
+    def source_rows(self, run_dir: str | Path) -> list[dict[str, object]]:
+        path = Path(run_dir) / "source_manifest.json"
+        return read_json(path).get("sources", []) if path.exists() else []
+
+    def campaign_observation_rows(self, run_dir: str | Path, *, include_hidden: bool = False) -> list[dict[str, object]]:
+        path = Path(run_dir) / ("atomic_transitions_normalized.jsonl" if include_hidden else "agent_visible_observations.jsonl")
+        return read_jsonl(path) if path.exists() else []
+
+    def campaign_comparison(self, run_dir: str | Path) -> dict[str, object]:
+        path = Path(run_dir) / "model_comparison.json"
+        return read_json(path) if path.exists() else {}
+
+    def campaign_identifiability_rows(self, run_dir: str | Path) -> list[dict[str, object]]:
+        path = Path(run_dir) / "identifiability_results.jsonl"
+        return read_jsonl(path) if path.exists() else []
+
 
 def create_app(*, runs_dir: str | Path = "runs") -> OfflineDiscoveryFrontend:
     return OfflineDiscoveryFrontend(runs_dir=runs_dir)
@@ -112,6 +146,10 @@ def create_gradio_workbench(*, runs_dir: str | Path = "runs"):
         run_dir = service.run_atomic_fixture(project_path, run_id=run_id or "atomic-workbench", force=True)
         return run_dir, str(service.benchmark_metrics(run_dir)), service.candidate_rows(run_dir), service.verifier_rows(run_dir), service.report_text(run_dir)
 
+    def run_campaign(project_path: str, run_id: str) -> tuple[str, str, list[dict[str, object]], list[dict[str, object]], str]:
+        run_dir = service.run_campaign_fixture(project_path, run_id=run_id or "rb87-workbench", force=True)
+        return run_dir, str(service.campaign_comparison(run_dir)), service.source_rows(run_dir), service.campaign_identifiability_rows(run_dir), service.report_text(run_dir)
+
     def validate(run_dir: str) -> str:
         errors = service.validate_atomic(run_dir) if (Path(run_dir) / "atomic_benchmark_metrics.json").exists() else service.validate(run_dir)
         return "valid" if not errors else "\n".join(errors)
@@ -122,15 +160,20 @@ def create_gradio_workbench(*, runs_dir: str | Path = "runs"):
     with gr.Blocks(title="Coscientist Discovery Workbench") as app:
         gr.Markdown("# Coscientist Discovery Workbench\nOffline deterministic mode. Live model/network controls are disabled by default.")
         with gr.Tab("Project"):
-            project = gr.Textbox(value="examples/atomic_spectroscopy_fixture/project.yaml", label="Project YAML")
+            project = gr.Textbox(value="examples/atomic_spectroscopy_fixture/project.yaml", label="Atomic benchmark YAML")
             run_id = gr.Textbox(value="atomic-workbench", label="Run ID")
             run_button = gr.Button("Run Atomic Discovery")
+            campaign_project = gr.Textbox(value="examples/rb87_real_spectroscopy/project.yaml", label="Rb87 campaign YAML")
+            campaign_button = gr.Button("Run Rb87 Campaign")
             run_dir = gr.Textbox(label="Run directory")
             metrics = gr.Textbox(label="Benchmark metrics")
         with gr.Tab("Dashboard"):
             validate_button = gr.Button("Validate Current Run")
             validation = gr.Textbox(label="Validation")
             deps = gr.JSON(value=service.dependency_status(), label="Dependency status")
+        with gr.Tab("Dataset Inspector"):
+            sources = gr.Dataframe(label="Sources")
+            identifiability = gr.Dataframe(label="Identifiability")
         with gr.Tab("Candidates"):
             candidates = gr.Dataframe(label="Candidate explorer")
         with gr.Tab("Verifier Inspector"):
@@ -144,6 +187,7 @@ def create_gradio_workbench(*, runs_dir: str | Path = "runs"):
             feedback_button = gr.Button("Append Feedback")
             feedback_path = gr.Textbox(label="Feedback artifact")
         run_button.click(run_atomic, inputs=[project, run_id], outputs=[run_dir, metrics, candidates, verifiers, report])
+        campaign_button.click(run_campaign, inputs=[campaign_project, run_id], outputs=[run_dir, metrics, sources, identifiability, report])
         validate_button.click(validate, inputs=[run_dir], outputs=[validation])
         feedback_button.click(feedback, inputs=[run_dir, candidate_id, decision, rationale], outputs=[feedback_path])
     return app

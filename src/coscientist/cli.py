@@ -14,6 +14,13 @@ from coscientist.closed_question import (
     validate_closed_question_artifacts,
 )
 from coscientist.atomic.discovery import compare_atomic_verifiers, refresh_atomic_artifacts_if_present, run_atomic_discovery_project, validate_atomic_discovery_artifacts
+from coscientist.atomic.campaign import (
+    compare_atomic_campaign,
+    curate_atomic_campaign_project,
+    resume_atomic_campaign_checkpoint,
+    run_atomic_campaign_project,
+    validate_atomic_campaign_artifacts,
+)
 from coscientist.config import load_config, load_research_goal
 from coscientist.discovery import run_discovery_project, resume_discovery_checkpoint, validate_discovery_artifacts
 from coscientist.literature.http import NetworkDisabledError
@@ -184,6 +191,28 @@ def build_parser() -> argparse.ArgumentParser:
     compare_atomic.add_argument("--runs-dir", default="runs")
     compare_atomic.add_argument("--experiment-id", default=None)
     compare_atomic.add_argument("--force", action="store_true")
+
+    curate_campaign = subcommands.add_parser("curate-atomic-campaign", help="Curate a deterministic V1.9 real-data atomic campaign.")
+    curate_campaign.add_argument("project")
+    curate_campaign.add_argument("--runs-dir", default="runs")
+    curate_campaign.add_argument("--run-id", default=None)
+    curate_campaign.add_argument("--force", action="store_true")
+
+    run_campaign = subcommands.add_parser("run-atomic-campaign", help="Run a deterministic V1.9 real-data atomic campaign.")
+    run_campaign.add_argument("project")
+    run_campaign.add_argument("--runs-dir", default="runs")
+    run_campaign.add_argument("--run-id", default=None)
+    run_campaign.add_argument("--force", action="store_true")
+    run_campaign.add_argument("--stop-after-stage", choices=["curation"], default=None)
+
+    validate_campaign = subcommands.add_parser("validate-atomic-campaign", help="Validate V1.9 atomic campaign artifacts.")
+    validate_campaign.add_argument("run_dir")
+
+    compare_campaign = subcommands.add_parser("compare-atomic-campaign", help="Compare deterministic V1.9 campaign baselines.")
+    compare_campaign.add_argument("project")
+    compare_campaign.add_argument("--runs-dir", default="runs")
+    compare_campaign.add_argument("--experiment-id", default=None)
+    compare_campaign.add_argument("--force", action="store_true")
     return parser
 
 
@@ -489,6 +518,11 @@ def _run_discovery(args: argparse.Namespace) -> int:
 
 
 def _resume_discovery(args: argparse.Namespace) -> int:
+    if Path(args.checkpoint).name == "campaign_checkpoint.json":
+        output = resume_atomic_campaign_checkpoint(args.checkpoint)
+        print(f"Atomic campaign resumed: {Path(output).resolve()}")
+        print(f"Report: {(Path(output) / 'campaign_report.md').resolve()}")
+        return 0
     output = resume_discovery_checkpoint(args.checkpoint)
     refreshed_atomic = refresh_atomic_artifacts_if_present(output)
     print(f"Discovery resumed: {Path(output).resolve()}")
@@ -529,6 +563,37 @@ def _compare_atomic_verifiers(args: argparse.Namespace) -> int:
     output = compare_atomic_verifiers(args.project, runs_dir=args.runs_dir, experiment_id=args.experiment_id, force=args.force)
     print(f"Atomic verifier comparison: {Path(output).resolve()}")
     print(f"Summary: {(Path(output) / 'atomic_benchmark_summary.md').resolve()}")
+    return 0
+
+
+def _curate_atomic_campaign(args: argparse.Namespace) -> int:
+    output = curate_atomic_campaign_project(args.project, runs_dir=args.runs_dir, run_id=args.run_id, force=args.force)
+    print(f"Atomic campaign curated: {Path(output).resolve()}")
+    print(f"Dataset manifest: {(Path(output) / 'dataset_manifest.json').resolve()}")
+    return 0
+
+
+def _run_atomic_campaign(args: argparse.Namespace) -> int:
+    output = run_atomic_campaign_project(args.project, runs_dir=args.runs_dir, run_id=args.run_id, force=args.force, stop_after_stage=args.stop_after_stage)
+    print(f"Atomic campaign run: {Path(output).resolve()}")
+    print(f"Report: {(Path(output) / 'campaign_report.md').resolve()}")
+    return 0
+
+
+def _validate_atomic_campaign(args: argparse.Namespace) -> int:
+    errors = validate_atomic_campaign_artifacts(args.run_dir)
+    if errors:
+        for error in errors:
+            print(f"Error: {error}")
+        return 2
+    print(f"Valid V1.9 atomic campaign artifacts: {Path(args.run_dir).resolve()}")
+    return 0
+
+
+def _compare_atomic_campaign(args: argparse.Namespace) -> int:
+    output = compare_atomic_campaign(args.project, runs_dir=args.runs_dir, experiment_id=args.experiment_id, force=args.force)
+    print(f"Atomic campaign comparison: {Path(output).resolve()}")
+    print(f"Report: {(Path(output) / 'campaign_report.md').resolve()}")
     return 0
 
 
@@ -596,6 +661,14 @@ def main(argv: list[str] | None = None) -> int:
             return _validate_atomic_discovery(args)
         if args.command == "compare-atomic-verifiers":
             return _compare_atomic_verifiers(args)
+        if args.command == "curate-atomic-campaign":
+            return _curate_atomic_campaign(args)
+        if args.command == "run-atomic-campaign":
+            return _run_atomic_campaign(args)
+        if args.command == "validate-atomic-campaign":
+            return _validate_atomic_campaign(args)
+        if args.command == "compare-atomic-campaign":
+            return _compare_atomic_campaign(args)
     except (ValidationError, ValueError, ProviderError, CompletedRunError, NetworkDisabledError) as exc:
         print(f"Error: {exc}")
         return 2
