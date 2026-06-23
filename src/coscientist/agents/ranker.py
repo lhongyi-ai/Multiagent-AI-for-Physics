@@ -41,21 +41,26 @@ class RankerAgent(Agent):
         for left, right in pairs:
             randomized_pairs.append((right, left) if rng.random() < 0.5 else (left, right))
 
-        comparisons = await self.provider.generate_structured(
-            prompt,
-            PairwiseBatch,
-            {
-                "pairs": randomized_pairs,
-                "agent_role": "ranker",
-                "workflow_stage": f"pairwise_round_{round_number}",
-            },
-        )
         wins = {hypothesis.id: 0 for hypothesis in hypotheses}
         losses = {hypothesis.id: 0 for hypothesis in hypotheses}
         notes = {hypothesis.id: [] for hypothesis in hypotheses}
+        if not randomized_pairs:
+            comparisons = PairwiseBatch(comparisons=[])
+        else:
+            comparisons = await self.provider.generate_structured(
+                prompt,
+                PairwiseBatch,
+                {
+                    "pairs": randomized_pairs,
+                    "agent_role": "ranker",
+                    "workflow_stage": f"pairwise_round_{round_number}",
+                },
+            )
         for comparison in comparisons.comparisons:
             a_id = comparison.hypothesis_a_id
             b_id = comparison.hypothesis_b_id
+            if a_id not in wins or b_id not in wins:
+                continue
             if comparison.winner == "a":
                 wins[a_id] += 1
                 losses[b_id] += 1

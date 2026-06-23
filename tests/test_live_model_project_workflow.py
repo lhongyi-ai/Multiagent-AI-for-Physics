@@ -76,12 +76,12 @@ def test_live_model_smoke_workflow_uses_mocked_http_and_writes_metadata(tmp_path
     assert manifest["model_mode"] == "live"
     assert manifest["model_provider"] == "openai"
     calls = (run_dir / "model_calls.jsonl").read_text()
-    assert calls.count("\n") == 4
+    assert calls.count("\n") == 3
     assert fake_key not in calls
     usage = json.loads((run_dir / "model_usage.json").read_text())
-    assert usage["call_count"] == 4
-    assert usage["total_tokens"] == 40
-    assert captured_urls == ["https://openrouter.ai/api/v1/chat/completions"] * 4
+    assert usage["call_count"] == 3
+    assert usage["total_tokens"] == 30
+    assert captured_urls == ["https://openrouter.ai/api/v1/chat/completions"] * 3
 
     assert main([
         "run-project",
