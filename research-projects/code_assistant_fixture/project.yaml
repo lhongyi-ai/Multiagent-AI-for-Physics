@@ -1,0 +1,58 @@
+project_id: code-assistant-retrieval-ranking
+title: Retrieval and ranking for code assistant suggestions
+research_question: Which retrieval and ranking mechanisms most plausibly improve code assistant suggestions without increasing irrelevant context, and what observations would discriminate among them?
+task_type: design
+background: >
+  Code assistant systems often combine lexical search, semantic retrieval, repository structure,
+  and reranking. The useful context budget is limited, so adding more retrieved snippets can help
+  or hurt depending on relevance, latency, and duplication.
+scope: >
+  Focus on mechanism-level design hypotheses for repository-aware retrieval and ranking,
+  not on vendor-specific products or private telemetry.
+known_observations:
+  - Lexical matching can recover exact API names that embedding-only retrieval may miss.
+  - Semantic retrieval can surface conceptually related examples when symbols differ.
+  - Reranking and deduplication can reduce irrelevant or repetitive context.
+constraints:
+  - Use only offline fixture evidence by default.
+  - Do not rely on proprietary telemetry.
+  - Treat the corpus as incomplete.
+excluded_directions:
+  - Hidden benchmark leakage.
+  - User-identifying telemetry.
+available_evidence:
+  - corpus.jsonl
+desired_output: A small set of evidence-linked design hypotheses with measurable falsification plans.
+evaluation_criteria:
+  - relevance
+  - evidence_grounding
+  - testability
+  - falsifiability
+  - uncertainty_calibration
+validation_constraints:
+  - Must distinguish retrieval quality from generation quality.
+  - Must not claim the fixture proves a production improvement.
+maximum_literature_budget: 5
+maximum_model_call_budget: 80
+maximum_evolution_rounds: 2
+literature_fixture_path: corpus.jsonl
+literature:
+  mode: fixture
+  query_generation: explicit
+  queries:
+    - text: code assistant retrieval reranking repository context
+      providers: [mock]
+      origin: user
+  search_providers: [mock]
+  enrichment_providers: [mock]
+  max_queries: 3
+  max_results_per_query: 5
+  max_results_per_provider: 5
+  max_total_results: 5
+  max_total_requests: 5
+  max_requests_per_provider: 5
+  minimum_corpus_size: 1
+  cache_policy: offline-only
+rubric_path: rubric.yaml
+created_at: 2026-06-22T00:00:00+00:00
+schema_version: v1

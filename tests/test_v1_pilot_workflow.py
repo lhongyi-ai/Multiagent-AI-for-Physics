@@ -52,5 +52,14 @@ def test_v1_cli_commands(tmp_path: Path, capsys) -> None:
     assert "Human review package" in capsys.readouterr().out
 
 
-def test_live_opt_in_protection_for_run_project(tmp_path: Path) -> None:
-    assert main(["run-project", PROJECT, "--runs-dir", str(tmp_path), "--live-network"]) == 2
+def test_live_literature_mode_requires_network_opt_in_for_run_project(tmp_path: Path) -> None:
+    assert main([
+        "run-project",
+        PROJECT,
+        "--runs-dir",
+        str(tmp_path),
+        "--literature-mode",
+        "live",
+        "--search-providers",
+        "openalex",
+    ]) == 2

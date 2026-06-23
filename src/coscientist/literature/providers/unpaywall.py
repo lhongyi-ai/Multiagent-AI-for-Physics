@@ -17,6 +17,7 @@ class UnpaywallFullTextLocator(CachedProvider):
     def __init__(self, *args, email: str | None = None, require_email: bool = True, **kwargs) -> None:
         super().__init__(*args, **kwargs)
         self.email = email or os.getenv("UNPAYWALL_EMAIL")
+        self.last_raw_record: dict[str, Any] | None = None
         if require_email and not self.email:
             raise ProviderConfigurationError("UNPAYWALL_EMAIL is required for live Unpaywall mode.")
 
@@ -30,6 +31,7 @@ class UnpaywallFullTextLocator(CachedProvider):
             params={"email": self.email},
             normalized_query={"doi": doi},
         )
+        self.last_raw_record = payload
         return self.normalize_locations(paper, payload)
 
     def normalize_locations(self, paper: Paper, record: dict[str, Any]) -> list[FullTextLocation]:

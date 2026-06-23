@@ -1,0 +1,14 @@
+rubric_version: pilot-v1
+dimensions:
+  - relevance
+  - plausibility
+  - evidence_grounding
+  - novelty
+  - testability
+  - falsifiability
+  - explanatory_power
+  - clarity
+  - diversity
+  - feasibility
+  - uncertainty_calibration
+note: Scores are decision aids for the pilot workflow, not objective scientific truth.

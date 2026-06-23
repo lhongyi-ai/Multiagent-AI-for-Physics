@@ -14,12 +14,13 @@ from coscientist.schemas.literature import SearchQuery
 def _provider(handler):
     client = httpx.AsyncClient(transport=httpx.MockTransport(handler))
     transport = AsyncHttpTransport(allow_live_network=True, client=client, max_retries=0)
-    return OpenAlexLiteratureSearch(transport, api_key="test-key")
+    return OpenAlexLiteratureSearch(transport)
 
 
-def test_openalex_requires_api_key_for_live_mode() -> None:
+def test_openalex_api_key_requirement_is_optional() -> None:
+    OpenAlexLiteratureSearch(AsyncHttpTransport(allow_live_network=True), api_key=None)
     with pytest.raises(ProviderConfigurationError):
-        OpenAlexLiteratureSearch(AsyncHttpTransport(allow_live_network=True), api_key=None)
+        OpenAlexLiteratureSearch(AsyncHttpTransport(allow_live_network=True), api_key=None, require_api_key=True)
 
 
 def test_openalex_query_construction_year_filter_and_limit() -> None:

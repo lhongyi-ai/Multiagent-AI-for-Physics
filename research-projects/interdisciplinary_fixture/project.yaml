@@ -37,6 +37,23 @@ maximum_literature_budget: 5
 maximum_model_call_budget: 80
 maximum_evolution_rounds: 2
 literature_fixture_path: corpus.jsonl
+literature:
+  mode: fixture
+  query_generation: explicit
+  queries:
+    - text: urban heat island tree canopy reflective roof impervious surface measurement bias
+      providers: [mock]
+      origin: user
+  search_providers: [mock]
+  enrichment_providers: [mock]
+  max_queries: 3
+  max_results_per_query: 5
+  max_results_per_provider: 5
+  max_total_results: 5
+  max_total_requests: 5
+  max_requests_per_provider: 5
+  minimum_corpus_size: 1
+  cache_policy: offline-only
 rubric_path: rubric.yaml
 created_at: 2026-06-22T00:00:00+00:00
 schema_version: v1

@@ -19,6 +19,11 @@ ARXIV = "{http://arxiv.org/schemas/atom}"
 class ArxivLiteratureSearch(CachedProvider):
     provider_name = "arxiv"
     base_url = "https://export.arxiv.org/api/query"
+    last_raw_records: list[dict[str, Any]]
+
+    def __init__(self, *args, **kwargs) -> None:
+        super().__init__(*args, **kwargs)
+        self.last_raw_records = []
 
     async def search(self, query: SearchQuery) -> list[Paper]:
         params = {
@@ -27,7 +32,9 @@ class ArxivLiteratureSearch(CachedProvider):
             "max_results": query.limit,
         }
         text = await self._get_atom("search", params, query.model_dump())
-        return parse_arxiv_feed(text)[: query.limit]
+        papers = parse_arxiv_feed(text)[: query.limit]
+        self.last_raw_records = [paper.model_dump(mode="json") for paper in papers]
+        return papers
 
     async def get_record(self, arxiv_id: str) -> Paper | None:
         normalized = normalize_arxiv_id(arxiv_id)
@@ -35,6 +42,7 @@ class ArxivLiteratureSearch(CachedProvider):
             return None
         text = await self._get_atom("get_by_id", {"id_list": normalized, "max_results": 1}, {"arxiv_id": normalized})
         papers = parse_arxiv_feed(text)
+        self.last_raw_records = [paper.model_dump(mode="json") for paper in papers]
         return papers[0] if papers else None
 
     async def _get_atom(self, operation: str, params: dict[str, Any], normalized_query: dict[str, Any]) -> str:

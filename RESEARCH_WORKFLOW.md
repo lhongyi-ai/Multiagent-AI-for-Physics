@@ -8,6 +8,8 @@
 
 This workflow should evolve as the system is tested on real research projects. It is a guide for future development and scientific work, not a claim that every capability described here is already implemented in the repository.
 
+Current V1 implementation note: project runs now support a bounded scholarly literature acquisition layer with fixture, existing-corpus, and explicit live-network modes. OpenAlex/arXiv search, Crossref metadata enrichment, Unpaywall open-access enrichment, query plans, raw provider records, deduplication reports, and corpus manifests are persisted as auditable artifacts.
+
 ## 1. Scope
 
 This workflow supports research tasks across physics, mathematics, chemistry, engineering, computer science, AI, and interdisciplinary science. It is intended for problems where the answer may be unknown, contested, difficult to validate, or dependent on domain-specific evidence.

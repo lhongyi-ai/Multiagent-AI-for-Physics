@@ -43,9 +43,9 @@ OpenAlex and arXiv discover papers. Crossref resolves publication metadata. Unpa
 ## Providers
 
 - `mock`: deterministic offline search, metadata, and full-text-location fixtures.
-- `openalex`: searches OpenAlex works and normalizes work metadata.
-- `crossref`: resolves DOI and bibliographic metadata, preserving field conflicts.
-- `unpaywall`: locates legal open-access copies for DOI-bearing papers.
+- `openalex`: searches OpenAlex works and normalizes work metadata. API keys are optional.
+- `crossref`: resolves DOI and bibliographic metadata, preserving field conflicts. A contact email is optional and polite.
+- `unpaywall`: locates legal open-access copies for DOI-bearing papers. Unpaywall requires an email for live enrichment.
 - `arxiv`: searches/parses arXiv Atom metadata and exposes canonical abstract/PDF locations.
 
 Agents use provider-neutral abstractions: literature search, metadata resolution, full-text location, document retrieval, and citation verification remain separate concepts.
@@ -86,11 +86,46 @@ python -m coscientist.cli compare-rounds runs/urban-heat-pilot
 python -m coscientist.cli build-review-package runs/urban-heat-pilot
 ```
 
+Project literature modes:
+
+- `fixture`: default deterministic JSONL corpus mode. No network calls.
+- `existing`: resume from a saved normalized corpus JSONL with `--corpus`.
+- `live`: use configured public scholarly providers, only with explicit `--live-network`.
+
+Plan live acquisition without network calls:
+
+```bash
+python -m coscientist.cli acquire-literature \
+  research-projects/interdisciplinary_fixture/project.yaml \
+  --literature-mode live \
+  --search-providers openalex arxiv \
+  --enrichment-providers crossref unpaywall \
+  --dry-run
+```
+
+Resume from an existing corpus:
+
+```bash
+python -m coscientist.cli run-project \
+  research-projects/interdisciplinary_fixture/project.yaml \
+  --corpus runs/some-prior-run/corpus.jsonl \
+  --run-id resumed-pilot
+```
+
 Important V1 artifacts:
 
 - `run_manifest.json`: run mode, schema versions, and artifact list.
 - `project_snapshot.json`: immutable project spec snapshot.
-- `corpus.jsonl` and `normalized_papers.jsonl`: fixture paper corpus.
+- `resolved_configuration.json`: final project literature configuration after CLI overrides.
+- `corpus.jsonl` and `normalized_papers.jsonl`: normalized paper corpus from fixture, existing, or live acquisition.
+- `literature_queries.jsonl`: planned and executed provider-specific queries.
+- `literature_search_events.jsonl`: provider request/cache event logs with secret-like fields redacted.
+- `provider_status.json` and `provider_usage.json`: provider enablement, skips, request counts, cache hits, and failures.
+- `raw_openalex_records.jsonl` and `raw_arxiv_records.jsonl`: raw or provider-normalized search records retained for audit.
+- `crossref_enrichment.jsonl` and `unpaywall_enrichment.jsonl`: metadata and open-access enrichment outputs.
+- `metadata_conflicts.jsonl`: unresolved metadata conflicts from deduplication or enrichment.
+- `deduplication_report.json`: merge counts and conservative merge rationale.
+- `corpus_manifest.json`: corpus hash, provider list, and acquisition limitations.
 - `hypotheses_initial.jsonl`, `evolution_round_1.jsonl`, `evolution_round_2.jsonl`, `hypotheses_final.json`: evidence-linked hypotheses.
 - `evidence_verification.jsonl`: claim-level verification records.
 - `evaluation_by_round.json`: per-round rubric records.
@@ -108,7 +143,7 @@ Live network access cannot happen accidentally. Any live provider command must i
 
 Environment variables:
 
-- `OPENALEX_API_KEY`: required for live OpenAlex mode.
+- `OPENALEX_API_KEY`: optional OpenAlex key.
 - `CROSSREF_MAILTO`: optional polite Crossref contact email.
 - `UNPAYWALL_EMAIL`: required for live Unpaywall mode.
 - `COSCIENTIST_USER_AGENT`: user agent for provider requests.
@@ -140,6 +175,8 @@ python -m coscientist.cli run examples/demo_goal.yaml \
 
 Provider-only commands do not require an LLM API key.
 
+For V1 project runs, use `acquire-literature --dry-run` first to inspect the query plan and budgets without network calls. Live project acquisition is bounded by `max_queries`, `max_results_per_query`, `max_total_results`, `max_total_requests`, and `max_requests_per_provider` in the project spec.
+
 ## Cache
 
 Provider responses use a local cache at `.coscientist_cache/provider_responses` by default. Cache keys include provider, operation, normalized request, and API version. API keys, authorization headers, and contact emails are redacted from cache keys and request logs. Cache writes are atomic and corrupted cache files are ignored safely.
@@ -165,6 +202,8 @@ Normal runs write JSON/JSONL artifacts under `runs/<run_id>/`. Literature-enable
 - `citations_round_0.json`
 - `citation_verifications_round_0.json`
 - `evidence_claims_round_0.json`
+
+V1 project runs write `resolved_configuration.json`, `literature_queries.jsonl`, provider status/usage files, raw provider records, enrichment outputs, `deduplication_report.json`, and `corpus_manifest.json`. These files are enough to resume later with `--corpus runs/<run_id>/corpus.jsonl` without repeating provider calls.
 
 ## Legal Retrieval Rules
 
@@ -198,7 +237,7 @@ Live tests are intentionally small and should not assume stable result ordering.
 ## Troubleshooting
 
 - If a live command fails immediately, check `--live-network` and required environment variables.
-- If OpenAlex fails before a request, set `OPENALEX_API_KEY`.
+- If OpenAlex returns throttling or policy errors, reduce request volume or set an optional `OPENALEX_API_KEY`.
 - If Unpaywall fails before a request, set `UNPAYWALL_EMAIL`.
 - If Crossref throttles or rejects usage, set `CROSSREF_MAILTO` and reduce request volume.
 - Delete `.coscientist_cache/provider_responses` or use `--force-refresh` on `run` if cached responses are stale.

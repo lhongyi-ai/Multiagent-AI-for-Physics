@@ -26,6 +26,7 @@ class CrossrefMetadataResolver(CachedProvider):
         super().__init__(*args, **kwargs)
         self.mailto = mailto or os.getenv("CROSSREF_MAILTO")
         self.user_agent = user_agent or os.getenv("COSCIENTIST_USER_AGENT", "coscientist-mvp/0.1")
+        self.last_raw_record: dict[str, Any] | None = None
 
     async def resolve(self, request: MetadataResolveRequest) -> MetadataResolution:
         doi = normalize_doi(request.doi or (request.paper.doi if request.paper else None))
@@ -39,6 +40,7 @@ class CrossrefMetadataResolver(CachedProvider):
         except Exception:
             return self._empty("provider_error", request.paper.id if request.paper else None)
         message = payload.get("message") or {}
+        self.last_raw_record = message
         paper = self.normalize_work(message)
         conflicts = self.compare(request.paper, paper) if request.paper else []
         return MetadataResolution(
@@ -60,6 +62,7 @@ class CrossrefMetadataResolver(CachedProvider):
         items = (payload.get("message") or {}).get("items") or []
         if not items:
             return self._empty("not_found", request.paper.id if request.paper else None)
+        self.last_raw_record = items[0]
         paper = self.normalize_work(items[0])
         conflicts = self.compare(request.paper, paper) if request.paper else []
         return MetadataResolution(

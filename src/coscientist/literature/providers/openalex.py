@@ -14,9 +14,10 @@ class OpenAlexLiteratureSearch(CachedProvider):
     provider_name = "openalex"
     base_url = "https://api.openalex.org"
 
-    def __init__(self, *args, api_key: str | None = None, require_api_key: bool = True, **kwargs) -> None:
+    def __init__(self, *args, api_key: str | None = None, require_api_key: bool = False, **kwargs) -> None:
         super().__init__(*args, **kwargs)
         self.api_key = api_key or os.getenv("OPENALEX_API_KEY")
+        self.last_raw_records: list[dict[str, Any]] = []
         if require_api_key and not self.api_key:
             raise ProviderConfigurationError("OPENALEX_API_KEY is required for live OpenAlex mode.")
 
@@ -32,7 +33,8 @@ class OpenAlexLiteratureSearch(CachedProvider):
         if self.api_key:
             params["api_key"] = self.api_key
         payload = await self.get_json_cached("search_works", f"{self.base_url}/works", params=params, normalized_query=query.model_dump())
-        return [self.normalize_work(item) for item in payload.get("results", [])[: query.limit]]
+        self.last_raw_records = list(payload.get("results", [])[: query.limit])
+        return [self.normalize_work(item) for item in self.last_raw_records]
 
     async def get_work(self, openalex_id: str) -> Paper | None:
         params = {"api_key": self.api_key} if self.api_key else None

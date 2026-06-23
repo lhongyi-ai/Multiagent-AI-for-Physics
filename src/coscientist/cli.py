@@ -8,6 +8,7 @@ from pathlib import Path
 from pydantic import ValidationError
 
 from coscientist.config import load_config, load_research_goal
+from coscientist.literature.http import NetworkDisabledError
 from coscientist.literature.pipeline import build_literature_pipeline
 from coscientist.orchestration.workflow import run_workflow
 from coscientist.pilot.artifacts import read_json, read_jsonl, validate_v1_artifacts
@@ -64,13 +65,33 @@ def build_parser() -> argparse.ArgumentParser:
     project_show = subcommands.add_parser("project-show", help="Validate and display a research project specification.")
     project_show.add_argument("project", help="Path to a V1 project YAML or JSON file.")
 
-    run_project = subcommands.add_parser("run-project", help="Run a deterministic offline V1 pilot project.")
+    run_project = subcommands.add_parser("run-project", help="Run a V1 pilot project with deterministic model execution.")
     run_project.add_argument("project", help="Path to a V1 project YAML or JSON file.")
     run_project.add_argument("--runs-dir", default="runs")
     run_project.add_argument("--run-id", default=None)
     run_project.add_argument("--force", action="store_true", help="Overwrite a completed pilot run directory.")
-    run_project.add_argument("--live-network", action="store_true", help="Reserved for explicit future live-provider execution.")
-    run_project.add_argument("--live-model", action="store_true", help="Reserved for explicit future live-model execution.")
+    run_project.add_argument("--literature-mode", choices=["fixture", "live", "existing"], default=None)
+    run_project.add_argument("--search-providers", nargs="+", default=None)
+    run_project.add_argument("--enrichment-providers", nargs="+", default=None)
+    run_project.add_argument("--max-literature-results", type=int, default=None)
+    run_project.add_argument("--corpus", default=None, help="Existing normalized corpus JSONL path.")
+    run_project.add_argument("--acquire-literature-only", action="store_true")
+    run_project.add_argument("--dry-run", action="store_true", help="Plan literature acquisition without network calls.")
+    run_project.add_argument("--live-network", action="store_true", help="Explicitly allow live scholarly provider HTTP calls.")
+    run_project.add_argument("--live-model", action="store_true", help="Rejected for V1: run-project uses only the deterministic mock model.")
+
+    acquire_lit = subcommands.add_parser("acquire-literature", help="Acquire or plan a project literature corpus.")
+    acquire_lit.add_argument("project", help="Path to a V1 project YAML or JSON file.")
+    acquire_lit.add_argument("--runs-dir", default="runs")
+    acquire_lit.add_argument("--run-id", default=None)
+    acquire_lit.add_argument("--force", action="store_true", help="Overwrite a completed acquisition run directory.")
+    acquire_lit.add_argument("--literature-mode", choices=["fixture", "live", "existing"], default=None)
+    acquire_lit.add_argument("--search-providers", nargs="+", default=None)
+    acquire_lit.add_argument("--enrichment-providers", nargs="+", default=None)
+    acquire_lit.add_argument("--max-literature-results", type=int, default=None)
+    acquire_lit.add_argument("--corpus", default=None, help="Existing normalized corpus JSONL path.")
+    acquire_lit.add_argument("--dry-run", action="store_true", help="Plan literature acquisition without network calls.")
+    acquire_lit.add_argument("--live-network", action="store_true", help="Explicitly allow live scholarly provider HTTP calls.")
 
     verify = subcommands.add_parser("verify-evidence", help="Verify V1 evidence links for a run directory.")
     verify.add_argument("run_dir")
@@ -193,11 +214,44 @@ async def _run_project(args: argparse.Namespace) -> int:
         run_id=args.run_id,
         live_network=args.live_network,
         live_model=args.live_model,
+        literature_mode=args.literature_mode,
+        search_providers=args.search_providers,
+        enrichment_providers=args.enrichment_providers,
+        max_literature_results=args.max_literature_results,
+        corpus_path=args.corpus,
+        acquire_literature_only=args.acquire_literature_only,
+        dry_run=args.dry_run,
         force=args.force,
     )
     print(f"Pilot run complete: {Path(run_dir).resolve()}")
-    print(f"Report: {(Path(run_dir) / 'report.md').resolve()}")
-    print(f"Human review: {(Path(run_dir) / 'human_review.md').resolve()}")
+    if args.acquire_literature_only or args.dry_run:
+        print(f"Corpus: {(Path(run_dir) / 'corpus.jsonl').resolve()}")
+        print(f"Manifest: {(Path(run_dir) / 'corpus_manifest.json').resolve()}")
+    else:
+        print(f"Report: {(Path(run_dir) / 'report.md').resolve()}")
+        print(f"Human review: {(Path(run_dir) / 'human_review.md').resolve()}")
+    return 0
+
+
+async def _acquire_literature(args: argparse.Namespace) -> int:
+    run_dir = await run_pilot_project(
+        args.project,
+        runs_dir=args.runs_dir,
+        run_id=args.run_id,
+        live_network=args.live_network,
+        live_model=False,
+        literature_mode=args.literature_mode,
+        search_providers=args.search_providers,
+        enrichment_providers=args.enrichment_providers,
+        max_literature_results=args.max_literature_results,
+        corpus_path=args.corpus,
+        acquire_literature_only=True,
+        dry_run=args.dry_run,
+        force=args.force,
+    )
+    print(f"Literature artifacts: {Path(run_dir).resolve()}")
+    print(f"Corpus: {(Path(run_dir) / 'corpus.jsonl').resolve()}")
+    print(f"Manifest: {(Path(run_dir) / 'corpus_manifest.json').resolve()}")
     return 0
 
 
@@ -299,6 +353,8 @@ def main(argv: list[str] | None = None) -> int:
             return _project_show(args)
         if args.command == "run-project":
             return asyncio.run(_run_project(args))
+        if args.command == "acquire-literature":
+            return asyncio.run(_acquire_literature(args))
         if args.command == "verify-evidence":
             return _verify_evidence(args)
         if args.command == "evaluate-run":
@@ -309,7 +365,7 @@ def main(argv: list[str] | None = None) -> int:
             return _build_review_package(args)
         if args.command == "validate-artifacts":
             return _validate_artifacts(args)
-    except (ValidationError, ValueError, ProviderError, CompletedRunError) as exc:
+    except (ValidationError, ValueError, ProviderError, CompletedRunError, NetworkDisabledError) as exc:
         print(f"Error: {exc}")
         return 2
     return 1
