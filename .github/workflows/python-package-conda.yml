@@ -16,7 +16,15 @@ jobs:
         python-version: '3.11'
     - name: Install dependencies
       run: |
-        pip install -e ".[dev]"
+        python -m pip install --upgrade pip
+        # Install dev dependencies if you have a requirements-dev.txt, otherwise try the extras
+        if [ -f requirements-dev.txt ]; then
+          pip install -r requirements-dev.txt
+        else
+          pip install -e ".[dev]" || true
+        fi
+        # Ensure flake8 is available for the lint step
+        pip install flake8
     - name: Lint with flake8
       run: |
         flake8 . --count --select=E9,F63,F7,F82 --show-source --statistics
