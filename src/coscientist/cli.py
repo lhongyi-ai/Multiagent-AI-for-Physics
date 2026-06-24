@@ -39,6 +39,17 @@ from coscientist.providers.openai_compatible import OpenAICompatibleProvider
 from coscientist.schemas.hypothesis import Hypothesis
 from coscientist.schemas.literature import ExternalIdentifier, MetadataResolveRequest, Paper, SearchQuery
 from coscientist.storage.local_store import LocalStore
+from coscientist.superconductivity import (
+    query_scientific_index,
+    rebuild_scientific_index,
+    run_superconductivity_campaign,
+    run_v22_campaign,
+    test_data_connections,
+    test_live_models,
+    validate_scientific_index,
+    validate_superconductivity_campaign,
+    validate_v22_campaign,
+)
 
 
 def build_parser() -> argparse.ArgumentParser:
@@ -213,6 +224,50 @@ def build_parser() -> argparse.ArgumentParser:
     compare_campaign.add_argument("--runs-dir", default="runs")
     compare_campaign.add_argument("--experiment-id", default=None)
     compare_campaign.add_argument("--force", action="store_true")
+
+    run_sc = subcommands.add_parser("run-superconductivity-campaign", help="Run a deterministic V2.1 superconductivity domain campaign.")
+    run_sc.add_argument("project")
+    run_sc.add_argument("--runs-dir", default="runs")
+    run_sc.add_argument("--run-id", default=None)
+    run_sc.add_argument("--force", action="store_true")
+    run_sc.add_argument("--live-network", action="store_true", help="Explicitly allow future live scientific database adapters.")
+
+    validate_sc = subcommands.add_parser("validate-superconductivity-campaign", help="Validate V2.1 superconductivity campaign artifacts.")
+    validate_sc.add_argument("run_dir")
+
+    test_live = subcommands.add_parser("test-live-models", help="Run permission-gated V2.2 live-model smoke tests.")
+    test_live.add_argument("--live-model", action="store_true", help="Explicitly allow OpenAI-compatible live model calls.")
+    test_live.add_argument("--runs-dir", default="runs")
+    test_live.add_argument("--run-id", default="v22-live-model-smoke")
+    test_live.add_argument("--force", action="store_true")
+
+    test_connections = subcommands.add_parser("test-data-connections", help="Report V2.2 scholarly/material provider connection status.")
+    test_connections.add_argument("--live-network", action="store_true", help="Explicitly allow live provider network checks when implemented.")
+    test_connections.add_argument("--runs-dir", default="runs")
+    test_connections.add_argument("--run-id", default="v22-data-connections")
+    test_connections.add_argument("--force", action="store_true")
+
+    run_v22 = subcommands.add_parser("run-v22-campaign", help="Run the V2.2 superconductivity theory-discrimination campaign.")
+    run_v22.add_argument("project")
+    run_v22.add_argument("--runs-dir", default="runs")
+    run_v22.add_argument("--run-id", default=None)
+    run_v22.add_argument("--force", action="store_true")
+    run_v22.add_argument("--live-model", action="store_true", help="Explicitly allow live model calls where routed.")
+    run_v22.add_argument("--live-network", action="store_true", help="Explicitly allow live database/network calls where implemented.")
+
+    validate_v22 = subcommands.add_parser("validate-v22-campaign", help="Validate V2.2 superconductivity campaign artifacts.")
+    validate_v22.add_argument("run_dir")
+
+    rebuild_index = subcommands.add_parser("rebuild-index", help="Rebuild the optional local SQLite scientific artifact index.")
+    rebuild_index.add_argument("run_or_project_path")
+
+    validate_index = subcommands.add_parser("validate-index", help="Validate the optional local SQLite scientific artifact index.")
+    validate_index.add_argument("run_or_project_path")
+
+    query_index = subcommands.add_parser("query-index", help="Query the optional local SQLite scientific artifact index.")
+    query_index.add_argument("run_or_project_path")
+    query_index.add_argument("table")
+    query_index.add_argument("--limit", type=int, default=20)
     return parser
 
 
@@ -597,6 +652,87 @@ def _compare_atomic_campaign(args: argparse.Namespace) -> int:
     return 0
 
 
+def _run_superconductivity_campaign(args: argparse.Namespace) -> int:
+    output = run_superconductivity_campaign(args.project, runs_dir=args.runs_dir, run_id=args.run_id, force=args.force, live_network=args.live_network)
+    print(f"Superconductivity campaign run: {Path(output).resolve()}")
+    print(f"Report: {(Path(output) / 'superconductivity_report.md').resolve()}")
+    print(f"Scientific index: {(Path(output) / 'scientific_index.sqlite').resolve()}")
+    return 0
+
+
+def _validate_superconductivity_campaign(args: argparse.Namespace) -> int:
+    errors = validate_superconductivity_campaign(args.run_dir)
+    if errors:
+        for error in errors:
+            print(f"Error: {error}")
+        return 2
+    print(f"Valid V2.1 superconductivity campaign artifacts: {Path(args.run_dir).resolve()}")
+    return 0
+
+
+def _test_data_connections(args: argparse.Namespace) -> int:
+    run_dir = Path(args.runs_dir) / args.run_id
+    if run_dir.exists() and any(run_dir.iterdir()) and not args.force:
+        raise ValueError(f"data-connection artifacts are immutable; use a new run id or --force: {run_dir}")
+    snapshots = run_dir / "provider_snapshots"
+    results = test_data_connections(live_network=args.live_network, snapshots_dir=snapshots)
+    run_dir.mkdir(parents=True, exist_ok=True)
+    from coscientist.pilot.artifacts import write_json
+
+    write_json(run_dir / "provider_connection_results.json", {"schema_version": "v22", "providers": results})
+    for item in results:
+        print(f"{item.provider}\tfixture={item.fixture_status}\tlive={item.live_status}\tauth={item.authentication_status}")
+    return 0
+
+
+async def _test_live_models(args: argparse.Namespace) -> int:
+    output = await test_live_models(live_model=args.live_model, runs_dir=args.runs_dir, run_id=args.run_id, force=args.force)
+    print(f"Live model smoke artifacts: {Path(output).resolve()}")
+    print(f"Results: {(Path(output) / 'live_model_smoke_results.jsonl').resolve()}")
+    return 0
+
+
+def _run_v22_campaign(args: argparse.Namespace) -> int:
+    output = run_v22_campaign(args.project, runs_dir=args.runs_dir, run_id=args.run_id, force=args.force, live_model=args.live_model, live_network=args.live_network)
+    print(f"V2.2 campaign run: {Path(output).resolve()}")
+    print(f"Report: {(Path(output) / 'v22_scientific_report.md').resolve()}")
+    print(f"Expert review: {(Path(output) / 'expert_review_package.md').resolve()}")
+    return 0
+
+
+def _validate_v22_campaign(args: argparse.Namespace) -> int:
+    errors = validate_v22_campaign(args.run_dir)
+    if errors:
+        for error in errors:
+            print(f"Error: {error}")
+        return 2
+    print(f"Valid V2.2 superconductivity campaign artifacts: {Path(args.run_dir).resolve()}")
+    return 0
+
+
+def _rebuild_index(args: argparse.Namespace) -> int:
+    output = rebuild_scientific_index(args.run_or_project_path)
+    print(f"Scientific index rebuilt: {Path(output).resolve()}")
+    print(f"Manifest: {(Path(output).parent / 'scientific_index_manifest.json').resolve()}")
+    return 0
+
+
+def _validate_index(args: argparse.Namespace) -> int:
+    errors = validate_scientific_index(args.run_or_project_path)
+    if errors:
+        for error in errors:
+            print(f"Error: {error}")
+        return 2
+    print(f"Valid scientific index: {Path(args.run_or_project_path).resolve()}")
+    return 0
+
+
+def _query_index(args: argparse.Namespace) -> int:
+    for row in query_scientific_index(args.run_or_project_path, args.table, limit=args.limit):
+        print(json.dumps(row, sort_keys=True))
+    return 0
+
+
 def _guard_live(provider_names: list[str], live_network: bool) -> None:
     live_providers = {"openalex", "crossref", "unpaywall", "arxiv"}
     if any(name in live_providers for name in provider_names) and not live_network:
@@ -669,6 +805,24 @@ def main(argv: list[str] | None = None) -> int:
             return _validate_atomic_campaign(args)
         if args.command == "compare-atomic-campaign":
             return _compare_atomic_campaign(args)
+        if args.command == "run-superconductivity-campaign":
+            return _run_superconductivity_campaign(args)
+        if args.command == "validate-superconductivity-campaign":
+            return _validate_superconductivity_campaign(args)
+        if args.command == "test-live-models":
+            return asyncio.run(_test_live_models(args))
+        if args.command == "test-data-connections":
+            return _test_data_connections(args)
+        if args.command == "run-v22-campaign":
+            return _run_v22_campaign(args)
+        if args.command == "validate-v22-campaign":
+            return _validate_v22_campaign(args)
+        if args.command == "rebuild-index":
+            return _rebuild_index(args)
+        if args.command == "validate-index":
+            return _validate_index(args)
+        if args.command == "query-index":
+            return _query_index(args)
     except (ValidationError, ValueError, ProviderError, CompletedRunError, NetworkDisabledError) as exc:
         print(f"Error: {exc}")
         return 2

@@ -1,18 +1,6 @@
 from __future__ import annotations
 
 from coscientist.verifiers.base import ScientificVerifier
-from coscientist.verifiers.atomic import (
-    AtomicSchemaVerifier,
-    CounterexampleParameterSearchVerifier,
-    LimitingCaseVerifier,
-    NumericalDiagonalizationVerifier,
-    ParameterFitVerifier,
-    QuTiPDynamicsVerifier,
-    QuTiPEigenVerifier,
-    SelectionRuleVerifier,
-    SpectrumConsistencyVerifier,
-    SymbolicHamiltonianVerifier,
-)
 from coscientist.verifiers.generic import (
     CounterexampleHookVerifier,
     EvidenceConsistencyVerifier,
@@ -42,23 +30,42 @@ class VerifierRegistry:
 
 def default_verifier_registry() -> VerifierRegistry:
     registry = VerifierRegistry()
-    for verifier in [
+    verifiers: list[ScientificVerifier] = [
         SchemaConstraintVerifier(),
         LogicalConsistencyVerifier(),
         EvidenceConsistencyVerifier(),
         CounterexampleHookVerifier(),
         ExperimentalConsistencyVerifier(),
         MaterialsFormulaVerifier(),
-        AtomicSchemaVerifier(),
-        SelectionRuleVerifier(),
-        SymbolicHamiltonianVerifier(),
-        NumericalDiagonalizationVerifier(),
-        SpectrumConsistencyVerifier(),
-        LimitingCaseVerifier(),
-        ParameterFitVerifier(),
-        CounterexampleParameterSearchVerifier(),
-        QuTiPEigenVerifier(),
-        QuTiPDynamicsVerifier(),
-    ]:
+    ]
+    try:
+        from coscientist.verifiers.atomic import (
+            AtomicSchemaVerifier,
+            CounterexampleParameterSearchVerifier,
+            LimitingCaseVerifier,
+            NumericalDiagonalizationVerifier,
+            ParameterFitVerifier,
+            QuTiPDynamicsVerifier,
+            QuTiPEigenVerifier,
+            SelectionRuleVerifier,
+            SpectrumConsistencyVerifier,
+            SymbolicHamiltonianVerifier,
+        )
+
+        verifiers.extend([
+            AtomicSchemaVerifier(),
+            SelectionRuleVerifier(),
+            SymbolicHamiltonianVerifier(),
+            NumericalDiagonalizationVerifier(),
+            SpectrumConsistencyVerifier(),
+            LimitingCaseVerifier(),
+            ParameterFitVerifier(),
+            CounterexampleParameterSearchVerifier(),
+            QuTiPEigenVerifier(),
+            QuTiPDynamicsVerifier(),
+        ])
+    except ModuleNotFoundError:
+        pass
+    for verifier in verifiers:
         registry.register(verifier)
     return registry

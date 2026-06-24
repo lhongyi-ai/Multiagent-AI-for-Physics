@@ -1,0 +1,93 @@
+campaign:
+  campaign_id: v22-superconductivity-fixture
+  question: "Can a generalized superconducting state arise from a microscopic Hamiltonian containing both phonon-mediated attraction and electron-hole-asymmetric correlated hopping, and can phonon-dominated, Hirsch-style correlated-hopping, mixed, and alternative kinetic mechanisms be distinguished using jointly constrained doping-resolved observables from one real material family?"
+  domain: condensed_matter_superconductivity
+  disclosure_policy: expert_review_required
+agent_models:
+  generator:
+    provider: mock
+    model: deterministic-mock
+    max_output_tokens: 900
+  theory_reviewer:
+    provider: mock
+    model: deterministic-mock
+    max_output_tokens: 900
+  experimental_reviewer:
+    provider: mock
+    model: deterministic-mock
+    max_output_tokens: 900
+  adversarial_reviewer:
+    provider: mock
+    model: deterministic-mock
+    max_output_tokens: 900
+dossier_records:
+  - schema_version: v22
+    record_id: lsco-tc-fit-1
+    family_id: lsco
+    source_id: fixture-lsco-tc
+    source_type: direct_measurement
+    observable: tc
+    doping_label: x=0.10
+    original_value: "Tc about 28 K"
+    normalized_value: 28.0
+    normalized_unit: K
+    uncertainty: fixture only
+    split: fit
+    curation_note: "Local deterministic fixture value for workflow validation; replace with primary literature before scientific use."
+    provenance: [local_fixture]
+  - schema_version: v22
+    record_id: lsco-tc-heldout-1
+    family_id: lsco
+    source_id: fixture-lsco-tc
+    source_type: direct_measurement
+    observable: tc
+    doping_label: x=0.15
+    original_value: "Tc about 38 K"
+    normalized_value: 38.0
+    normalized_unit: K
+    uncertainty: fixture only
+    split: held_out
+    curation_note: "Held-out fixture record used to test preregistration mechanics, not scientific accuracy."
+    provenance: [local_fixture]
+  - schema_version: v22
+    record_id: lsco-optical-fit-1
+    family_id: lsco
+    source_id: fixture-lsco-optical
+    source_type: derived
+    observable: optical_partial_sum
+    doping_label: x=0.10
+    original_value: "partial spectral-weight change depends on cutoff"
+    normalized_value: null
+    normalized_unit: null
+    uncertainty: fixture only
+    split: fit
+    curation_note: "Preserves cutoff sensitivity rather than averaging incompatible interpretations."
+    provenance: [local_fixture]
+  - schema_version: v22
+    record_id: lsco-isotope-validation-1
+    family_id: lsco
+    source_id: fixture-lsco-isotope
+    source_type: author_interpretation
+    observable: isotope_coefficient
+    doping_label: underdoped
+    original_value: "nonzero and doping dependent"
+    normalized_value: null
+    normalized_unit: null
+    uncertainty: fixture only
+    split: validation
+    curation_note: "Interpretive record; cannot alone prove phonon dominance."
+    provenance: [local_fixture]
+  - schema_version: v22
+    record_id: lsco-review-context-1
+    family_id: lsco
+    source_id: fixture-review
+    source_type: review
+    observable: electron_hole_asymmetry
+    doping_label: null
+    original_value: "electron-hole asymmetry is family dependent"
+    normalized_value: null
+    normalized_unit: null
+    uncertainty: fixture only
+    split: expert_only
+    curation_note: "Context-only record excluded from direct support scoring."
+    provenance: [local_fixture]

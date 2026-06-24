@@ -81,3 +81,24 @@ def test_frontend_exposes_v20_artifact_views(tmp_path: Path) -> None:
     assert app.prediction_ledger_rows(run_dir)
     assert app.reproduction_rows(run_dir)
     assert app.provider_routing_rows(run_dir)
+
+
+def test_frontend_ask_research_question_optimizes_hypotheses(tmp_path: Path) -> None:
+    app = create_app(runs_dir=tmp_path)
+    run_dir = Path(app.ask_research_question(
+        "What mechanism could explain a surprising missing element signal in a synthesized intermetallic?",
+        context="EDX shows a low signal.\nBulk composition has not been measured.",
+        domain="materials_synthesis",
+        run_id="ask-ui",
+    ))
+    assert app.validate(run_dir) == []
+    rows = app.candidate_rows(run_dir)
+    assert rows
+    assert any(row["status"] in {"promising", "partially_verified", "expert_review_required"} for row in rows)
+    assert app.elo_rating_rows(run_dir)
+    assert app.claim_ledger_rows(run_dir)
+    assert "Discovery Search Report" in app.report_text(run_dir)
+    summary = app.copyable_summary(run_dir)
+    assert "Optimized Hypotheses" in summary
+    assert "Claim Ledger" in summary
+    assert "Prediction Ledger" in summary

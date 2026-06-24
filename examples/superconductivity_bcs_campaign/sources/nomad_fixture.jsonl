@@ -1,0 +1,2 @@
+{"archive_id":"nomad-local-al","formula":"Al","method":"DFT fixture metadata","code":"fixture-code","functional":"PBE-like placeholder","workflow":"static","provenance":["local_fixture"],"compatibility_warning":"method metadata only"}
+{"archive_id":"nomad-local-mgb2","formula":"MgB2","method":"DFT phonon fixture metadata","code":"fixture-code","functional":"PBE-like placeholder","workflow":"phonon","provenance":["local_fixture"],"compatibility_warning":"do not mix with experimental Tc as proof"}

@@ -547,11 +547,11 @@ For V1 project runs, use `acquire-literature --dry-run` first to inspect the que
 OpenRouter works through the OpenAI-compatible provider:
 
 ```dotenv
-OPENAI_API_KEY=
+OPENAI_API_KEY=<your-openrouter-or-openai-key>
 OPENAI_BASE_URL=https://openrouter.ai/api/v1
-OPENAI_MODEL=
+OPENAI_MODEL=<model-name>
 OPENROUTER_APP_NAME=Multiagent AI Co-Scientist
-OPENROUTER_SITE_URL=
+OPENROUTER_SITE_URL=<optional-site-url>
 ```
 
 Dry-run without model or literature calls:
@@ -713,6 +713,64 @@ PYTHONPATH=src python -m coscientist.cli validate-discovery runs/discovery-v20
 ```
 
 See `docs/v20_search_upgrades.md` for configuration details and artifact names.
+
+## V2.1 Superconductivity Campaign
+
+The repository now includes a bounded, offline superconductivity domain pack for the mixed BCS / correlated-hopping question. It adds local fixture adapters, a rebuildable SQLite artifact index, strict superconductivity model schemas, toy mean-field calculations, energy decomposition, optical cutoff warnings, doping sweeps, material mapping, identifiability, counterexamples, differentiated scores, and frontend views.
+
+Run:
+
+```bash
+PYTHONPATH=src python -m coscientist.cli run-superconductivity-campaign \
+  examples/superconductivity_bcs_campaign/project.yaml \
+  --run-id superconductivity-v21 \
+  --force
+
+PYTHONPATH=src python -m coscientist.cli validate-superconductivity-campaign \
+  runs/superconductivity-v21
+```
+
+Query the optional index:
+
+```bash
+PYTHONPATH=src python -m coscientist.cli query-index \
+  runs/superconductivity-v21 materials --limit 5
+```
+
+This campaign is a bounded toy-model and curation framework. It does not prove a universal superconductivity mechanism or replace expert review. See `docs/v21_superconductivity_campaign.md`.
+
+## V2.2 Theory-Discrimination Campaign
+
+V2.2 adds a bounded superconductivity theory-discrimination campaign with provider-neutral per-role routing, live-agent dialogue artifacts, public database connection status, material-family selection, an expert-curated fixture dossier, microscopic Hamiltonian/derivation artifacts, mechanism fingerprints, parameter plausibility, adversarial tests, independent reproduction, and an experiment-level proposal.
+
+Offline deterministic run:
+
+```bash
+PYTHONPATH=src python -m coscientist.cli run-v22-campaign \
+  examples/v22_superconductivity_real_data/project.yaml \
+  --run-id v22-fixture \
+  --force
+
+PYTHONPATH=src python -m coscientist.cli validate-v22-campaign runs/v22-fixture
+```
+
+Bounded live database smoke, only when explicitly allowed:
+
+```bash
+PYTHONPATH=src python -m coscientist.cli test-data-connections --live-network \
+  --run-id v22-data-live \
+  --force
+```
+
+Bounded live model smoke, only when explicitly allowed and credentials are configured:
+
+```bash
+PYTHONPATH=src python -m coscientist.cli test-live-models --live-model \
+  --run-id v22-model-live \
+  --force
+```
+
+V2.2 does not claim a discovery. It can produce constraints, equivalence classes, objections, and experiment proposals; public claims remain blocked behind expert review. See `docs/v22_superconductivity_theory_discrimination.md`.
 
 ## Testing
 

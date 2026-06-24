@@ -1,0 +1,4 @@
+material_id,formula,family,tc_k,doping_label,source_id,dataset_version
+mat-al,Al,conventional_elemental,1.2,stoichiometric,supercon-fixture,v21-local
+mat-mgb2,MgB2,conventional_strong_electron_phonon,39,stoichiometric,supercon-fixture,v21-local
+mat-lsco,La2-xSrxCuO4,cuprate,38,x~0.15 ambiguous,supercon-fixture,v21-local

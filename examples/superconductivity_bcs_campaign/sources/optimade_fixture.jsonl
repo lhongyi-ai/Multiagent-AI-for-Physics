@@ -1,0 +1,3 @@
+{"structure_id":"optimade-local-al","formula":"Al","provider_specific":{"provider":"local_fixture","dimension":3},"provenance":["local_fixture"]}
+{"structure_id":"optimade-local-mgb2","formula":"MgB2","provider_specific":{"provider":"local_fixture","dimension":3},"provenance":["local_fixture"]}
+{"structure_id":"optimade-local-lsco","formula":"La2SrCuO4","provider_specific":{"provider":"local_fixture","dimension":2},"provenance":["local_fixture"]}
