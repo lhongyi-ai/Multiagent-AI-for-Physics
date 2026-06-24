@@ -1,0 +1,11 @@
+name: physics-ai
+channels:
+  - conda-forge
+  - defaults
+dependencies:
+  - python=3.10
+  - pip
+  - pytest
+  - flake8
+  - pip::
+    - -r requirements.txt
