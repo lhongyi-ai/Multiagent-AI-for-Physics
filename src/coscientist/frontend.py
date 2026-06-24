@@ -341,6 +341,46 @@ class OfflineDiscoveryFrontend:
         path = Path(run_dir) / "claim_dag.sqlite"
         return query_claim_dag_database(run_dir, "total_gate_results", limit=20) if path.exists() else []
 
+    def run_live_agent_meeting(self, run_dir: str | Path, question: str, *, live_model: bool = False, max_rounds: int = 2, force: bool = True) -> str:
+        from coscientist.live_agents import run_live_agent_meeting
+
+        return str(run_live_agent_meeting(run_dir, question, live_model=live_model, max_rounds=max_rounds, force=force))
+
+    def stream_live_agent_meeting(self, run_dir: str | Path, question: str, *, live_model: bool = False, max_rounds: int = 2, force: bool = True):
+        from coscientist.live_agents import stream_live_agent_meeting
+
+        yield from stream_live_agent_meeting(run_dir, question, live_model=live_model, max_rounds=max_rounds, force=force)
+
+    def validate_live_agent_meeting(self, run_dir: str | Path) -> list[str]:
+        from coscientist.live_agents import validate_meeting_artifacts
+
+        return validate_meeting_artifacts(run_dir)
+
+    def live_agent_message_rows(self, run_dir: str | Path) -> list[dict[str, object]]:
+        from coscientist.live_agents import meeting_message_rows
+
+        return meeting_message_rows(run_dir)
+
+    def live_agent_provider_rows(self, run_dir: str | Path) -> list[dict[str, object]]:
+        from coscientist.live_agents import provider_call_rows
+
+        return provider_call_rows(run_dir)
+
+    def live_agent_transcript(self, run_dir: str | Path) -> str:
+        from coscientist.live_agents import meeting_transcript
+
+        return meeting_transcript(run_dir)
+
+    def run_targeted_repair(self, run_dir: str | Path, *, claim_id: str = "", reason: str = "") -> dict[str, object]:
+        from coscientist.live_agents import targeted_repair_from_claim_dag
+
+        return targeted_repair_from_claim_dag(run_dir, claim_id=claim_id or None, reason=reason)
+
+    def claim_dag_mermaid(self, run_dir: str | Path) -> str:
+        from coscientist.live_agents import claim_dag_mermaid
+
+        return claim_dag_mermaid(run_dir)
+
 
 def create_app(*, runs_dir: str | Path = "runs") -> OfflineDiscoveryFrontend:
     return OfflineDiscoveryFrontend(runs_dir=runs_dir)
@@ -567,6 +607,8 @@ SC_IDENTIFIABILITY_COLUMNS = ["group_id", "model_ids", "status", "observables_co
 CLAIM_DAG_NODE_COLUMNS = ["claim_id", "candidate_id", "parent_claim_id", "claim_type", "statement", "load_bearing", "uncertainty", "repairable"]
 CLAIM_DAG_EDGE_COLUMNS = ["edge_id", "parent_claim_id", "child_claim_id", "dependency_type", "load_bearing_path"]
 CLAIM_DAG_GATE_COLUMNS = ["candidate_id", "terminal_status", "selected_rule", "blocker_ids_json"]
+MEETING_MESSAGE_COLUMNS = ["round_number", "agent_id", "role", "critic_influenced", "content"]
+PROVIDER_CALL_COLUMNS = ["call_id", "agent_id", "provider", "model", "permission_mode", "parsing_result", "input_tokens", "output_tokens"]
 
 
 def _table(records: list[dict[str, object]], columns: list[str]) -> list[list[object]]:
@@ -669,7 +711,37 @@ def create_gradio_workbench(*, runs_dir: str | Path = "runs"):
             _table(service.claim_dag_node_rows(run_dir), CLAIM_DAG_NODE_COLUMNS),
             _table(service.claim_dag_edge_rows(run_dir), CLAIM_DAG_EDGE_COLUMNS),
             _table(service.claim_dag_gate_rows(run_dir), CLAIM_DAG_GATE_COLUMNS),
+            service.claim_dag_mermaid(run_dir),
         )
+
+    def live_meeting(run_dir: str, question: str, rounds: int, live_model: bool):
+        target = run_dir.strip() or str(Path(runs_dir) / f"meeting-{_slug(question or 'research-question')}")
+        final_status: dict[str, object] = {}
+        transcript = ""
+        rows: list[dict[str, object]] = []
+        calls: list[dict[str, object]] = []
+        for transcript, rows, calls, final_status in service.stream_live_agent_meeting(target, question, live_model=live_model, max_rounds=int(rounds or 2), force=True):
+            yield (
+                target,
+                transcript,
+                _table(rows, MEETING_MESSAGE_COLUMNS),
+                _table(calls, PROVIDER_CALL_COLUMNS),
+                final_status,
+                "validating...",
+            )
+        errors = service.validate_live_agent_meeting(target)
+        yield (
+            target,
+            transcript,
+            _table(service.live_agent_message_rows(target), MEETING_MESSAGE_COLUMNS),
+            _table(service.live_agent_provider_rows(target), PROVIDER_CALL_COLUMNS),
+            final_status,
+            "valid" if not errors else "\n".join(errors),
+        )
+
+    def targeted_repair(run_dir: str, claim_id: str, reason: str):
+        result = service.run_targeted_repair(run_dir, claim_id=claim_id, reason=reason)
+        return result, service.claim_dag_mermaid(run_dir)
 
     with gr.Blocks(title="Coscientist Discovery Workbench") as app:
         gr.Markdown("# Coscientist Discovery Workbench\nOffline deterministic mode. Live model/network controls are disabled by default.")
@@ -746,6 +818,26 @@ def create_gradio_workbench(*, runs_dir: str | Path = "runs"):
             claim_dag_nodes = gr.Dataframe(headers=CLAIM_DAG_NODE_COLUMNS, label="Claims")
             claim_dag_edges = gr.Dataframe(headers=CLAIM_DAG_EDGE_COLUMNS, label="Dependencies")
             claim_dag_gate = gr.Dataframe(headers=CLAIM_DAG_GATE_COLUMNS, label="Deterministic total gate")
+            claim_dag_graph = gr.Textbox(lines=18, label="Mermaid graph", show_copy_button=True)
+        with gr.Tab("Live Agent Room"):
+            meeting_run_dir = gr.Textbox(label="Run directory", placeholder="Leave blank to create a new meeting run directory")
+            meeting_question = gr.Textbox(lines=4, label="Research question")
+            meeting_rounds = gr.Slider(1, 8, value=2, step=1, label="Meeting rounds")
+            meeting_live = gr.Checkbox(value=False, label="Use live model if credentials are configured")
+            meeting_button = gr.Button("Start Agent Meeting")
+            meeting_out_dir = gr.Textbox(label="Meeting run directory")
+            meeting_transcript = gr.Textbox(lines=26, label="Streaming transcript", show_copy_button=True)
+            meeting_messages = gr.Dataframe(headers=MEETING_MESSAGE_COLUMNS, label="Agent messages")
+            meeting_calls = gr.Dataframe(headers=PROVIDER_CALL_COLUMNS, label="Provider calls")
+            meeting_status = gr.JSON(label="Meeting status")
+            meeting_validation = gr.Textbox(label="Validation")
+        with gr.Tab("Targeted Repair"):
+            repair_run_dir = gr.Textbox(label="Run directory")
+            repair_claim_id = gr.Textbox(label="Claim ID (optional)")
+            repair_reason = gr.Textbox(lines=3, label="Repair reason")
+            repair_button = gr.Button("Run Verifier-Driven Repair")
+            repair_result = gr.JSON(label="Repair result")
+            repair_graph = gr.Textbox(lines=18, label="Updated Mermaid graph", show_copy_button=True)
         with gr.Tab("Reports"):
             report = gr.Textbox(lines=24, label="Report")
             copyable = gr.Textbox(lines=24, label="Copyable summary", show_copy_button=True)
@@ -766,7 +858,9 @@ def create_gradio_workbench(*, runs_dir: str | Path = "runs"):
         validate_button.click(validate, inputs=[run_dir], outputs=[validation])
         inspect_button.click(inspect_search_os, inputs=[run_dir], outputs=[elo, tournament, strategy, allocation, verifiers, reproduction, tasks, checkpoint])
         ledger_button.click(inspect_ledgers, inputs=[run_dir], outputs=[claims, predictions, routing, discrepancies])
-        claim_dag_button.click(build_claim_dag, inputs=[claim_dag_run_dir, claim_dag_candidate], outputs=[claim_dag_db, claim_dag_validation, claim_dag_nodes, claim_dag_edges, claim_dag_gate])
+        claim_dag_button.click(build_claim_dag, inputs=[claim_dag_run_dir, claim_dag_candidate], outputs=[claim_dag_db, claim_dag_validation, claim_dag_nodes, claim_dag_edges, claim_dag_gate, claim_dag_graph])
+        meeting_button.click(live_meeting, inputs=[meeting_run_dir, meeting_question, meeting_rounds, meeting_live], outputs=[meeting_out_dir, meeting_transcript, meeting_messages, meeting_calls, meeting_status, meeting_validation])
+        repair_button.click(targeted_repair, inputs=[repair_run_dir, repair_claim_id, repair_reason], outputs=[repair_result, repair_graph])
         feedback_button.click(feedback, inputs=[run_dir, candidate_id, decision, rationale], outputs=[feedback_path])
     return app
 

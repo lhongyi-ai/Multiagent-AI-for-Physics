@@ -20,6 +20,111 @@ AtomicClaimType = Literal[
 ]
 ClaimCheckVerdict = Literal["pass", "fail", "uncertain", "contradicted", "not_applicable"]
 ValidationOutcome = Literal["internally_validated", "needs_experiment", "refuted", "insufficient_evidence", "verifier_insufficient"]
+AgentRoleV23 = Literal["principal_investigator", "theorist", "critic", "experimentalist", "curator", "repair_agent"]
+
+
+class AgentDefinition(BaseModel):
+    model_config = ConfigDict(extra="forbid", strict=True, protected_namespaces=())
+
+    schema_version: str = "v23"
+    agent_id: str
+    title: str
+    expertise: str
+    goal: str
+    role: AgentRoleV23
+    provider: Literal["mock", "openrouter", "openai_compatible"] = "mock"
+    model: str = "deterministic-mock"
+    temperature: float = Field(default=0.2, ge=0.0, le=2.0)
+    max_output_tokens: int = Field(default=600, ge=1, le=4000)
+
+
+class MeetingAgentResponse(BaseModel):
+    model_config = ConfigDict(extra="forbid", strict=True, protected_namespaces=())
+
+    schema_version: str = "v23"
+    agent_id: str
+    role: AgentRoleV23
+    concise_message: str
+    cited_artifact_ids: list[str] = Field(default_factory=list)
+    objections: list[str] = Field(default_factory=list)
+    proposed_repairs: list[str] = Field(default_factory=list)
+    changed_by_critic: bool = False
+
+
+class MeetingSession(BaseModel):
+    model_config = ConfigDict(extra="forbid", strict=True, protected_namespaces=())
+
+    schema_version: str = "v23"
+    meeting_id: str
+    research_question: str
+    current_round: int = Field(default=0, ge=0)
+    max_rounds: int = Field(default=2, ge=1, le=8)
+    status: Literal["fixture", "live", "live_connection_blocked", "failed", "completed"] = "fixture"
+    stopping_reason: str | None = None
+    created_at: datetime
+    updated_at: datetime
+
+
+class MeetingMessage(BaseModel):
+    model_config = ConfigDict(extra="forbid", strict=True, protected_namespaces=())
+
+    schema_version: str = "v23"
+    message_id: str
+    meeting_id: str
+    round_number: int = Field(ge=0)
+    agent_id: str
+    role: AgentRoleV23
+    provider: str
+    model: str
+    content: str
+    cited_artifact_ids: list[str] = Field(default_factory=list)
+    critic_influenced: bool = False
+    created_at: datetime
+
+
+class ProviderCallRecordV23(BaseModel):
+    model_config = ConfigDict(extra="forbid", strict=True, protected_namespaces=())
+
+    schema_version: str = "v23"
+    call_id: str
+    meeting_id: str
+    agent_id: str
+    provider: str
+    model: str
+    remote_response_id: str | None = None
+    timestamp: datetime
+    latency_ms: float = Field(default=0.0, ge=0.0)
+    prompt_hash: str
+    input_tokens: int = Field(default=0, ge=0)
+    output_tokens: int = Field(default=0, ge=0)
+    parsing_result: Literal["parsed", "blocked", "failed"] = "parsed"
+    permission_mode: Literal["fixture", "live_model", "blocked"] = "fixture"
+
+
+class ClaimRepairRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid", strict=True, protected_namespaces=())
+
+    schema_version: str = "v23"
+    repair_request_id: str
+    candidate_id: str
+    claim_id: str
+    reason: str
+    requested_by: str = "frontend"
+    created_at: datetime
+
+
+class ClaimRepairResult(BaseModel):
+    model_config = ConfigDict(extra="forbid", strict=True, protected_namespaces=())
+
+    schema_version: str = "v23"
+    repair_result_id: str
+    parent_candidate_id: str
+    child_candidate_id: str
+    claim_id: str
+    changed_fields: list[str]
+    invalidated_claim_ids: list[str]
+    outcome: Literal["accepted", "rejected_no_op", "blocked"]
+    created_at: datetime
 
 
 class FormalScientificClaim(BaseModel):
