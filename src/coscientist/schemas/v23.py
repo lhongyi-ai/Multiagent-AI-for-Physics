@@ -1,0 +1,179 @@
+from __future__ import annotations
+
+from datetime import datetime
+from typing import Literal
+
+from pydantic import BaseModel, ConfigDict, Field, model_validator
+
+
+AtomicClaimType = Literal[
+    "definitional",
+    "mathematical",
+    "mechanistic",
+    "empirical",
+    "numerical",
+    "predictive",
+    "novelty",
+    "experimental_feasibility",
+    "parameter_plausibility",
+    "data_interpretation",
+]
+ClaimCheckVerdict = Literal["pass", "fail", "uncertain", "contradicted", "not_applicable"]
+ValidationOutcome = Literal["internally_validated", "needs_experiment", "refuted", "insufficient_evidence", "verifier_insufficient"]
+
+
+class FormalScientificClaim(BaseModel):
+    model_config = ConfigDict(extra="forbid", strict=True, protected_namespaces=())
+
+    schema_version: str = "v23"
+    claim_id: str
+    candidate_id: str
+    scoped_main_claim: str
+    falsification_conditions: list[str]
+    assumptions: list[str]
+    provenance: list[str] = Field(default_factory=list)
+
+
+class AtomicScientificClaim(BaseModel):
+    model_config = ConfigDict(extra="forbid", strict=True, protected_namespaces=())
+
+    schema_version: str = "v23"
+    claim_id: str
+    parent_claim_id: str
+    candidate_id: str
+    claim_type: AtomicClaimType
+    statement: str
+    load_bearing: bool
+    assumptions: list[str] = Field(default_factory=list)
+    falsification_conditions: list[str] = Field(default_factory=list)
+    evidence_requirements: list[str] = Field(default_factory=list)
+    verifier_requirements: list[str] = Field(default_factory=list)
+    uncertainty: str = "not quantified"
+    repairable: bool = True
+    provenance: list[str] = Field(default_factory=list)
+
+
+class ClaimDependency(BaseModel):
+    model_config = ConfigDict(extra="forbid", strict=True, protected_namespaces=())
+
+    schema_version: str = "v23"
+    parent_claim_id: str
+    child_claim_id: str
+    dependency_type: Literal["requires", "supports", "contradicts", "context"]
+    load_bearing_path: bool = False
+
+
+class ClaimDAG(BaseModel):
+    model_config = ConfigDict(extra="forbid", strict=True, protected_namespaces=())
+
+    schema_version: str = "v23"
+    candidate_id: str
+    main_claim_id: str
+    claim_ids: list[str]
+    dependency_edges: list[ClaimDependency]
+    cycles: list[list[str]] = Field(default_factory=list)
+    missing_dependencies: list[str] = Field(default_factory=list)
+    orphan_claim_ids: list[str] = Field(default_factory=list)
+    load_bearing_paths: list[list[str]] = Field(default_factory=list)
+    weakest_link_claim_id: str | None = None
+    maturity: Literal["draft", "checkable", "blocked", "terminal"] = "draft"
+
+
+class ClaimCheckRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid", strict=True, protected_namespaces=())
+
+    schema_version: str = "v23"
+    request_id: str
+    claim_id: str
+    verifier_id: str
+    required_independent: bool = True
+    input_artifact_ids: list[str] = Field(default_factory=list)
+
+
+class ClaimCheckRecord(BaseModel):
+    model_config = ConfigDict(extra="forbid", strict=True, protected_namespaces=())
+
+    schema_version: str = "v23"
+    check_id: str
+    claim_id: str
+    verdict: ClaimCheckVerdict
+    severity: Literal["load_bearing", "supporting", "context"]
+    confidence: float = Field(ge=0.0, le=1.0)
+    basis_artifact_ids: list[str] = Field(default_factory=list)
+    contradiction_ids: list[str] = Field(default_factory=list)
+    repairable: bool = True
+    missing_information: list[str] = Field(default_factory=list)
+    concise_justification: str
+    verifier_name: str
+    verifier_version: str = "v23"
+    cached_or_recomputed: Literal["cached", "recomputed", "fixture"] = "fixture"
+
+    @model_validator(mode="after")
+    def missing_basis_degrades_to_uncertain(self) -> ClaimCheckRecord:
+        if self.verdict == "pass" and not self.basis_artifact_ids:
+            self.verdict = "uncertain"
+            self.missing_information = [*self.missing_information, "missing basis artifact"]
+        return self
+
+
+class ClaimContradiction(BaseModel):
+    model_config = ConfigDict(extra="forbid", strict=True, protected_namespaces=())
+
+    schema_version: str = "v23"
+    contradiction_id: str
+    claim_id: str
+    source_artifact_id: str
+    severity: Literal["fatal", "major", "minor"]
+    description: str
+    resolved: bool = False
+
+
+class IndependentCheckRecord(BaseModel):
+    model_config = ConfigDict(extra="forbid", strict=True, protected_namespaces=())
+
+    schema_version: str = "v23"
+    independence_id: str
+    claim_id: str
+    check_ids: list[str] = Field(min_length=2)
+    implementation_paths: list[str] = Field(min_length=2)
+    shared_dependencies: list[str] = Field(default_factory=list)
+    independence_limitations: list[str] = Field(default_factory=list)
+    discrepancies: list[str] = Field(default_factory=list)
+    reconciliation_status: Literal["reconciled", "unresolved", "not_independent"] = "reconciled"
+
+
+class ValidationBlocker(BaseModel):
+    model_config = ConfigDict(extra="forbid", strict=True, protected_namespaces=())
+
+    schema_version: str = "v23"
+    blocker_id: str
+    claim_id: str | None = None
+    blocker_type: Literal["contradiction", "missing_evidence", "missing_independent_check", "verifier_gap", "experiment_required", "unphysical_parameter"]
+    description: str
+    terminal_impact: ValidationOutcome
+
+
+class ValidationVerdict(BaseModel):
+    model_config = ConfigDict(extra="forbid", strict=True, protected_namespaces=())
+
+    schema_version: str = "v23"
+    candidate_id: str
+    terminal_status: ValidationOutcome
+    selected_rule: str
+    blocking_claim_ids: list[str] = Field(default_factory=list)
+    blocker_ids: list[str] = Field(default_factory=list)
+    rule_trace: list[str] = Field(default_factory=list)
+    arbiter_summary: str = ""
+
+
+class DeepValidationRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid", strict=True, protected_namespaces=())
+
+    schema_version: str = "v23"
+    request_id: str
+    run_id: str
+    candidate_id: str
+    top_k_context_ids: list[str] = Field(default_factory=list)
+    created_at: datetime
+    live_model_enabled: bool = False
+    live_network_enabled: bool = False

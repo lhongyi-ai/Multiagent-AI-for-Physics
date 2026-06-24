@@ -7,6 +7,12 @@ from pathlib import Path
 
 from pydantic import ValidationError
 
+from coscientist.claim_dag import (
+    create_claim_dag_artifacts_from_run,
+    query_claim_dag_database,
+    rebuild_claim_dag_database,
+    validate_claim_dag_database,
+)
 from coscientist.closed_question import (
     compare_closed_feedback,
     run_closed_question_project,
@@ -268,6 +274,19 @@ def build_parser() -> argparse.ArgumentParser:
     query_index.add_argument("run_or_project_path")
     query_index.add_argument("table")
     query_index.add_argument("--limit", type=int, default=20)
+
+    build_claim_dag = subcommands.add_parser("build-claim-dag-db", help="Build claim DAG artifacts and SQLite database for a run directory.")
+    build_claim_dag.add_argument("run_dir")
+    build_claim_dag.add_argument("--candidate-id", default=None)
+    build_claim_dag.add_argument("--force", action="store_true")
+
+    validate_claim_dag = subcommands.add_parser("validate-claim-dag-db", help="Validate claim DAG artifacts and SQLite database for a run directory.")
+    validate_claim_dag.add_argument("run_dir")
+
+    query_claim_dag = subcommands.add_parser("query-claim-dag-db", help="Query the claim DAG SQLite database.")
+    query_claim_dag.add_argument("run_dir")
+    query_claim_dag.add_argument("table")
+    query_claim_dag.add_argument("--limit", type=int, default=20)
     return parser
 
 
@@ -733,6 +752,30 @@ def _query_index(args: argparse.Namespace) -> int:
     return 0
 
 
+def _build_claim_dag_db(args: argparse.Namespace) -> int:
+    create_claim_dag_artifacts_from_run(args.run_dir, candidate_id=args.candidate_id, force=args.force)
+    output = rebuild_claim_dag_database(args.run_dir)
+    print(f"Claim DAG database rebuilt: {Path(output).resolve()}")
+    print(f"Validation: {'valid' if not validate_claim_dag_database(args.run_dir) else 'has errors'}")
+    return 0
+
+
+def _validate_claim_dag_db(args: argparse.Namespace) -> int:
+    errors = validate_claim_dag_database(args.run_dir)
+    if errors:
+        for error in errors:
+            print(f"Error: {error}")
+        return 2
+    print(f"Valid claim DAG database: {Path(args.run_dir).resolve()}")
+    return 0
+
+
+def _query_claim_dag_db(args: argparse.Namespace) -> int:
+    for row in query_claim_dag_database(args.run_dir, args.table, limit=args.limit):
+        print(json.dumps(row, sort_keys=True))
+    return 0
+
+
 def _guard_live(provider_names: list[str], live_network: bool) -> None:
     live_providers = {"openalex", "crossref", "unpaywall", "arxiv"}
     if any(name in live_providers for name in provider_names) and not live_network:
@@ -823,6 +866,12 @@ def main(argv: list[str] | None = None) -> int:
             return _validate_index(args)
         if args.command == "query-index":
             return _query_index(args)
+        if args.command == "build-claim-dag-db":
+            return _build_claim_dag_db(args)
+        if args.command == "validate-claim-dag-db":
+            return _validate_claim_dag_db(args)
+        if args.command == "query-claim-dag-db":
+            return _query_claim_dag_db(args)
     except (ValidationError, ValueError, ProviderError, CompletedRunError, NetworkDisabledError) as exc:
         print(f"Error: {exc}")
         return 2

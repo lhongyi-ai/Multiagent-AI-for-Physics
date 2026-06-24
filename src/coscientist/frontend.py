@@ -312,6 +312,35 @@ class OfflineDiscoveryFrontend:
         path = Path(run_dir) / "experiment_proposals.jsonl"
         return read_jsonl(path) if path.exists() else []
 
+    def build_claim_dag_database(self, run_dir: str | Path, *, candidate_id: str | None = None, force: bool = False) -> str:
+        from coscientist.claim_dag import create_claim_dag_artifacts_from_run, rebuild_claim_dag_database
+
+        create_claim_dag_artifacts_from_run(run_dir, candidate_id=candidate_id, force=force)
+        return str(rebuild_claim_dag_database(run_dir))
+
+    def validate_claim_dag_database(self, run_dir: str | Path) -> list[str]:
+        from coscientist.claim_dag import validate_claim_dag_database
+
+        return validate_claim_dag_database(run_dir)
+
+    def claim_dag_node_rows(self, run_dir: str | Path) -> list[dict[str, object]]:
+        from coscientist.claim_dag import query_claim_dag_database
+
+        path = Path(run_dir) / "claim_dag.sqlite"
+        return query_claim_dag_database(run_dir, "claim_nodes", limit=200) if path.exists() else []
+
+    def claim_dag_edge_rows(self, run_dir: str | Path) -> list[dict[str, object]]:
+        from coscientist.claim_dag import query_claim_dag_database
+
+        path = Path(run_dir) / "claim_dag.sqlite"
+        return query_claim_dag_database(run_dir, "claim_edges", limit=200) if path.exists() else []
+
+    def claim_dag_gate_rows(self, run_dir: str | Path) -> list[dict[str, object]]:
+        from coscientist.claim_dag import query_claim_dag_database
+
+        path = Path(run_dir) / "claim_dag.sqlite"
+        return query_claim_dag_database(run_dir, "total_gate_results", limit=20) if path.exists() else []
+
 
 def create_app(*, runs_dir: str | Path = "runs") -> OfflineDiscoveryFrontend:
     return OfflineDiscoveryFrontend(runs_dir=runs_dir)
@@ -535,6 +564,9 @@ SC_ENERGY_COLUMNS = ["model_id", "delta_kinetic_ev", "delta_interaction_ev", "de
 SC_OPTICAL_COLUMNS = ["model_id", "full_sum", "delta_sum", "partial_sum_by_cutoff", "interpretation_warnings"]
 SC_MATERIAL_COLUMNS = ["material_id", "formula", "family", "tc_k", "doping_label", "mapping_uncertainty", "unsupported_fields"]
 SC_IDENTIFIABILITY_COLUMNS = ["group_id", "model_ids", "status", "observables_compared", "required_precision", "discriminating_observable"]
+CLAIM_DAG_NODE_COLUMNS = ["claim_id", "candidate_id", "parent_claim_id", "claim_type", "statement", "load_bearing", "uncertainty", "repairable"]
+CLAIM_DAG_EDGE_COLUMNS = ["edge_id", "parent_claim_id", "child_claim_id", "dependency_type", "load_bearing_path"]
+CLAIM_DAG_GATE_COLUMNS = ["candidate_id", "terminal_status", "selected_rule", "blocker_ids_json"]
 
 
 def _table(records: list[dict[str, object]], columns: list[str]) -> list[list[object]]:
@@ -628,6 +660,17 @@ def create_gradio_workbench(*, runs_dir: str | Path = "runs"):
     def feedback(run_dir: str, candidate_id: str, decision: str, rationale: str) -> str:
         return service.persist_feedback(run_dir, candidate_id=candidate_id, decision=decision, rationale=rationale)
 
+    def build_claim_dag(run_dir: str, candidate_id: str):
+        db = service.build_claim_dag_database(run_dir, candidate_id=candidate_id or None, force=True)
+        errors = service.validate_claim_dag_database(run_dir)
+        return (
+            db,
+            "valid" if not errors else "\n".join(errors),
+            _table(service.claim_dag_node_rows(run_dir), CLAIM_DAG_NODE_COLUMNS),
+            _table(service.claim_dag_edge_rows(run_dir), CLAIM_DAG_EDGE_COLUMNS),
+            _table(service.claim_dag_gate_rows(run_dir), CLAIM_DAG_GATE_COLUMNS),
+        )
+
     with gr.Blocks(title="Coscientist Discovery Workbench") as app:
         gr.Markdown("# Coscientist Discovery Workbench\nOffline deterministic mode. Live model/network controls are disabled by default.")
         with gr.Tab("Ask & Optimize"):
@@ -694,6 +737,15 @@ def create_gradio_workbench(*, runs_dir: str | Path = "runs"):
             predictions = gr.Dataframe(headers=PREDICTION_COLUMNS, label="Prediction ledger")
             routing = gr.Dataframe(headers=ROUTING_COLUMNS, label="Per-role provider routing")
             discrepancies = gr.JSON(label="Reproduction discrepancies")
+        with gr.Tab("Claim DAG"):
+            claim_dag_run_dir = gr.Textbox(label="Run directory")
+            claim_dag_candidate = gr.Textbox(label="Candidate ID (optional)")
+            claim_dag_button = gr.Button("Build / Refresh Claim DAG DB")
+            claim_dag_db = gr.Textbox(label="Claim DAG database")
+            claim_dag_validation = gr.Textbox(label="Validation")
+            claim_dag_nodes = gr.Dataframe(headers=CLAIM_DAG_NODE_COLUMNS, label="Claims")
+            claim_dag_edges = gr.Dataframe(headers=CLAIM_DAG_EDGE_COLUMNS, label="Dependencies")
+            claim_dag_gate = gr.Dataframe(headers=CLAIM_DAG_GATE_COLUMNS, label="Deterministic total gate")
         with gr.Tab("Reports"):
             report = gr.Textbox(lines=24, label="Report")
             copyable = gr.Textbox(lines=24, label="Copyable summary", show_copy_button=True)
@@ -714,6 +766,7 @@ def create_gradio_workbench(*, runs_dir: str | Path = "runs"):
         validate_button.click(validate, inputs=[run_dir], outputs=[validation])
         inspect_button.click(inspect_search_os, inputs=[run_dir], outputs=[elo, tournament, strategy, allocation, verifiers, reproduction, tasks, checkpoint])
         ledger_button.click(inspect_ledgers, inputs=[run_dir], outputs=[claims, predictions, routing, discrepancies])
+        claim_dag_button.click(build_claim_dag, inputs=[claim_dag_run_dir, claim_dag_candidate], outputs=[claim_dag_db, claim_dag_validation, claim_dag_nodes, claim_dag_edges, claim_dag_gate])
         feedback_button.click(feedback, inputs=[run_dir, candidate_id, decision, rationale], outputs=[feedback_path])
     return app
 
