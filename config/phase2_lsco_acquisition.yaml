@@ -1,0 +1,45 @@
+material:
+  canonical_name: La2-xSrxCuO4
+  aliases:
+    - LSCO
+    - La2-xSrxCuO4
+    - La_{2-x}Sr_xCuO_4
+    - La1.85Sr0.15CuO4
+
+observables:
+  - tc_k
+  - gap_ev
+  - isotope_alpha
+  - penetration_depth_nm
+  - superfluid_density_proxy
+  - optical_spectral_weight_proxy
+  - optical_s_delta_over_sn
+  - optical_su_over_sn
+
+search:
+  connectors:
+    - arxiv
+    - openalex
+    - crossref
+    - unpaywall
+  max_results_per_query: 10
+  citation_expansion_depth: 0
+  year_min: 1980
+  year_max: null
+
+promotion:
+  auto_promote_high_confidence: false
+  require_complete_provenance: true
+  require_unit_validation: true
+  require_human_review_for_figure_data: true
+
+coverage:
+  doping_match_tolerance: 0.005
+  minimum_unique_doping_points_per_observable: 3
+  require_optical_data: true
+  require_held_out_split: true
+
+execution:
+  default_executor: local
+  checkpoint_interval: 10
+  max_concurrent_requests: 2

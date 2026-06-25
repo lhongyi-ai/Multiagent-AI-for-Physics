@@ -28,6 +28,9 @@ from coscientist.atomic.campaign import (
     validate_atomic_campaign_artifacts,
 )
 from coscientist.config import load_config, load_research_goal
+from coscientist.core import GenericDataAcquisitionAgent, get_default_domain_registry, run_optimizer_v2
+from coscientist.core.optimizer_v2 import mutation_operators
+from coscientist.core.tasks import ScientificTaskType, TaskPolicyRegistry
 from coscientist.discovery import run_discovery_project, resume_discovery_checkpoint, validate_discovery_artifacts
 from coscientist.literature.http import NetworkDisabledError
 from coscientist.literature.pipeline import build_literature_pipeline
@@ -48,11 +51,24 @@ from coscientist.storage.local_store import LocalStore
 from coscientist.superconductivity import (
     query_scientific_index,
     rebuild_scientific_index,
+    import_digitized_points,
+    CandidateReviewDecision,
+    phase2_acquisition_gaps,
+    phase2_candidate_rows,
+    phase2_candidate_sources,
+    phase2_digitization_queue,
+    phase2_readiness,
+    promote_reviewed_candidates,
+    review_candidate_rows,
+    run_phase2_acquisition,
+    run_minimal_mixed_bcs_project,
     run_superconductivity_campaign,
     run_v22_campaign,
     test_data_connections,
     test_live_models,
     validate_scientific_index,
+    validate_minimal_mixed_bcs_run,
+    validate_phase2_acquisition_run,
     validate_superconductivity_campaign,
     validate_v22_campaign,
 )
@@ -241,6 +257,67 @@ def build_parser() -> argparse.ArgumentParser:
     validate_sc = subcommands.add_parser("validate-superconductivity-campaign", help="Validate V2.1 superconductivity campaign artifacts.")
     validate_sc.add_argument("run_dir")
 
+    run_minimal_bcs = subcommands.add_parser("run-minimal-bcs", help="Run Phase-1 minimal mixed BCS theory scan.")
+    run_minimal_bcs.add_argument("--project", default=None, help="Optional JSON project specification. Defaults to built-in minimal BCS scan.")
+    run_minimal_bcs.add_argument("--runs-dir", default="runs")
+    run_minimal_bcs.add_argument("--run-id", default="minimal-mixed-bcs")
+    run_minimal_bcs.add_argument("--force", action="store_true")
+
+    validate_minimal_bcs = subcommands.add_parser("validate-minimal-bcs", help="Validate Phase-1 minimal mixed BCS artifacts.")
+    validate_minimal_bcs.add_argument("run_dir")
+
+    phase2_acquire = subcommands.add_parser("phase2-acquire", help="Run Phase 2 LSCO data acquisition into staging artifacts.")
+    phase2_acquire.add_argument("--material", default="lsco")
+    phase2_acquire.add_argument("--mode", choices=["fixture", "existing", "live"], default="fixture")
+    phase2_acquire.add_argument("--runs-dir", default="runs")
+    phase2_acquire.add_argument("--run-id", default="phase2-lsco-acquisition")
+    phase2_acquire.add_argument("--canonical-dataset", default="data/phase2_lsco.csv")
+    phase2_acquire.add_argument("--live-network", action="store_true", help="Explicitly allow arXiv/OpenAlex/Crossref/Unpaywall network calls in live mode.")
+    phase2_acquire.add_argument("--max-queries", type=int, default=8)
+    phase2_acquire.add_argument("--max-results-per-query", type=int, default=5)
+    phase2_acquire.add_argument("--auto-promote", action="store_true", help="Promote high-confidence validated rows. Disabled by default.")
+
+    validate_phase2_acq = subcommands.add_parser("validate-phase2-acquisition", help="Validate Phase 2 acquisition artifacts.")
+    validate_phase2_acq.add_argument("run_dir")
+
+    phase2_review = subcommands.add_parser("phase2-review-staging", help="Print staged Phase 2 candidate rows.")
+    phase2_review.add_argument("run_dir")
+
+    phase2_promote = subcommands.add_parser("phase2-promote", help="Promote reviewed Phase 2 rows by rerunning fixture acquisition with auto-promotion.")
+    phase2_promote.add_argument("--runs-dir", default="runs")
+    phase2_promote.add_argument("--run-id", default="phase2-lsco-promotion")
+    phase2_promote.add_argument("--canonical-dataset", default="data/phase2_lsco.csv")
+
+    phase2_review_row = subcommands.add_parser("phase2-review-row", help="Approve, reject, or edit a staged Phase 2 candidate row.")
+    phase2_review_row.add_argument("run_dir")
+    phase2_review_row.add_argument("--candidate-row-id", required=True)
+    phase2_review_row.add_argument("--decision", choices=["approve", "reject", "edit"], required=True)
+    phase2_review_row.add_argument("--rationale", default="")
+    phase2_review_row.add_argument("--reviewer", default="local-human")
+    phase2_review_row.add_argument("--edited-value", default=None)
+    phase2_review_row.add_argument("--edited-unit", default=None)
+
+    phase2_promote_reviewed = subcommands.add_parser("phase2-promote-reviewed", help="Promote approved reviewed Phase 2 rows into a canonical CSV.")
+    phase2_promote_reviewed.add_argument("run_dir")
+    phase2_promote_reviewed.add_argument("--canonical-dataset", default="data/phase2_lsco.csv")
+
+    phase2_digitization = subcommands.add_parser("phase2-digitization-queue", help="Print Phase 2 figure digitization queue.")
+    phase2_digitization.add_argument("run_dir")
+
+    phase2_import_digitized = subcommands.add_parser("phase2-import-digitized", help="Import reviewed digitized graph points into a run artifact.")
+    phase2_import_digitized.add_argument("run_dir")
+    phase2_import_digitized.add_argument("--task-id", required=True)
+    phase2_import_digitized.add_argument("--csv", required=True)
+    phase2_import_digitized.add_argument("--reviewer", default="local-human")
+
+    phase2_coverage = subcommands.add_parser("phase2-coverage", help="Run Phase 2 LSCO coverage analysis.")
+    phase2_coverage.add_argument("--canonical-dataset", default="data/phase2_lsco.csv")
+    phase2_coverage.add_argument("--runs-dir", default="runs")
+    phase2_coverage.add_argument("--run-id", default="phase2-lsco-coverage")
+
+    phase2_compare = subcommands.add_parser("phase2-compare", help="Report Phase 2 comparison readiness from an acquisition run.")
+    phase2_compare.add_argument("run_dir")
+
     test_live = subcommands.add_parser("test-live-models", help="Run permission-gated V2.2 live-model smoke tests.")
     test_live.add_argument("--live-model", action="store_true", help="Explicitly allow OpenAI-compatible live model calls.")
     test_live.add_argument("--runs-dir", default="runs")
@@ -287,6 +364,41 @@ def build_parser() -> argparse.ArgumentParser:
     query_claim_dag.add_argument("run_dir")
     query_claim_dag.add_argument("table")
     query_claim_dag.add_argument("--limit", type=int, default=20)
+
+    domains_list = subcommands.add_parser("domains-list", help="List registered scientific Domain Packs.")
+
+    domains_inspect = subcommands.add_parser("domains-inspect", help="Inspect one scientific Domain Pack.")
+    domains_inspect.add_argument("--domain", required=True)
+
+    acquisition_run = subcommands.add_parser("acquisition-run", help="Run generic DomainPack-backed acquisition.")
+    acquisition_run.add_argument("--domain", required=True)
+    acquisition_run.add_argument("--question", default="")
+    acquisition_run.add_argument("--task-type", choices=[item.value for item in ScientificTaskType], default=ScientificTaskType.DATA_EXTRACTION.value)
+    acquisition_run.add_argument("--mode", choices=["fixture", "existing", "live"], default="fixture")
+    acquisition_run.add_argument("--runs-dir", default="runs")
+    acquisition_run.add_argument("--run-id", default=None)
+    acquisition_run.add_argument("--live-network", action="store_true")
+    acquisition_run.add_argument("--force", action="store_true")
+
+    hypotheses_optimize = subcommands.add_parser("hypotheses-optimize", help="Run deterministic Hypothesis Optimizer V2 on fixture or run artifacts.")
+    hypotheses_optimize.add_argument("--domain", default="general")
+    hypotheses_optimize.add_argument("--runs-dir", default="runs")
+    hypotheses_optimize.add_argument("--run-id", default="optimizer-v2")
+    hypotheses_optimize.add_argument("--hypotheses-json", default=None, help="Optional JSON/JSONL hypotheses file. Uses a fixture set when omitted.")
+    hypotheses_optimize.add_argument("--force", action="store_true")
+
+    hypotheses_portfolio = subcommands.add_parser("hypotheses-portfolio", help="Print Optimizer V2 portfolio rows.")
+    hypotheses_portfolio.add_argument("run_dir")
+
+    failures_list = subcommands.add_parser("failures-list", help="Print Optimizer V2 failure memory.")
+    failures_list.add_argument("run_dir")
+
+    benchmark_run = subcommands.add_parser("benchmark-run", help="Run a deterministic DomainPack benchmark smoke.")
+    benchmark_run.add_argument("--domain", required=True)
+    benchmark_run.add_argument("--variant", default="optimizer_v2")
+    benchmark_run.add_argument("--runs-dir", default="runs")
+    benchmark_run.add_argument("--run-id", default=None)
+    benchmark_run.add_argument("--force", action="store_true")
     return parser
 
 
@@ -689,6 +801,131 @@ def _validate_superconductivity_campaign(args: argparse.Namespace) -> int:
     return 0
 
 
+def _run_minimal_bcs(args: argparse.Namespace) -> int:
+    output = run_minimal_mixed_bcs_project(args.project, runs_dir=args.runs_dir, run_id=args.run_id, force=args.force)
+    print(f"Minimal mixed BCS run: {Path(output).resolve()}")
+    print(f"Report: {(Path(output) / 'minimal_bcs_report.md').resolve()}")
+    print(f"Phase diagram: {(Path(output) / 'phase_diagram_points.jsonl').resolve()}")
+    return 0
+
+
+def _validate_minimal_bcs(args: argparse.Namespace) -> int:
+    errors = validate_minimal_mixed_bcs_run(args.run_dir)
+    if errors:
+        for error in errors:
+            print(f"Error: {error}")
+        return 2
+    print(f"Valid minimal mixed BCS artifacts: {Path(args.run_dir).resolve()}")
+    return 0
+
+
+def _phase2_acquire(args: argparse.Namespace) -> int:
+    if args.material.lower() != "lsco":
+        raise ValueError("Only --material lsco is supported in this Phase 2 acquisition milestone.")
+    output = run_phase2_acquisition(
+        mode=args.mode,
+        live_network=args.live_network,
+        runs_dir=args.runs_dir,
+        run_id=args.run_id,
+        canonical_dataset=args.canonical_dataset,
+        auto_promote=args.auto_promote,
+        max_queries=args.max_queries,
+        max_results_per_query=args.max_results_per_query,
+    )
+    summary = read_json(Path(output) / "acquisition_summary.json")
+    print(f"Phase 2 acquisition run: {Path(output).resolve()}")
+    print(f"Status: {summary['status']}")
+    print(f"Candidate rows staged: {summary['candidate_rows_staged']}")
+    print(f"Rows promoted: {summary['rows_promoted']}")
+    print(f"Phase 2 status: {summary['final_phase2_status']}")
+    return 0 if summary["status"] != "blocked_live_network_permission_required" else 2
+
+
+def _validate_phase2_acquisition(args: argparse.Namespace) -> int:
+    errors = validate_phase2_acquisition_run(args.run_dir)
+    if errors:
+        for error in errors:
+            print(f"Error: {error}")
+        return 2
+    print(f"Valid Phase 2 acquisition artifacts: {Path(args.run_dir).resolve()}")
+    return 0
+
+
+def _phase2_review_staging(args: argparse.Namespace) -> int:
+    for row in phase2_candidate_rows(args.run_dir):
+        print(json.dumps(row, sort_keys=True))
+    return 0
+
+
+def _phase2_promote(args: argparse.Namespace) -> int:
+    output = run_phase2_acquisition(
+        mode="fixture",
+        live_network=False,
+        runs_dir=args.runs_dir,
+        run_id=args.run_id,
+        canonical_dataset=args.canonical_dataset,
+        auto_promote=True,
+    )
+    print(f"Phase 2 promotion run: {Path(output).resolve()}")
+    print(f"Diff: {(Path(output) / 'canonical_dataset_diff.json').resolve()}")
+    return 0
+
+
+def _phase2_review_row(args: argparse.Namespace) -> int:
+    value: float | str | None = args.edited_value
+    if value is not None:
+        try:
+            value = float(value)
+        except ValueError:
+            pass
+    output = review_candidate_rows(args.run_dir, [
+        CandidateReviewDecision(
+            candidate_row_id=args.candidate_row_id,
+            decision=args.decision,
+            reviewer=args.reviewer,
+            rationale=args.rationale,
+            edited_value=value,
+            edited_unit=args.edited_unit,
+        )
+    ])
+    print(f"Review decision recorded: {Path(output).resolve()}")
+    return 0
+
+
+def _phase2_promote_reviewed(args: argparse.Namespace) -> int:
+    output = promote_reviewed_candidates(args.run_dir, args.canonical_dataset)
+    print(f"Reviewed promotion report: {Path(output).resolve()}")
+    return 0
+
+
+def _phase2_digitization_queue(args: argparse.Namespace) -> int:
+    for row in phase2_digitization_queue(args.run_dir):
+        print(json.dumps(row, sort_keys=True))
+    return 0
+
+
+def _phase2_import_digitized(args: argparse.Namespace) -> int:
+    output = import_digitized_points(args.run_dir, task_id=args.task_id, csv_path=args.csv, reviewer=args.reviewer)
+    print(f"Digitized points imported: {Path(output).resolve()}")
+    return 0
+
+
+def _phase2_coverage(args: argparse.Namespace) -> int:
+    from coscientist.superconductivity.phase2_data import run_phase2_data_coverage_tool
+
+    output = run_phase2_data_coverage_tool(Path(args.runs_dir) / args.run_id, source_path=args.canonical_dataset)
+    evaluation = read_json(Path(output) / "phase2_data_tool_evaluation.json")
+    print(f"Phase 2 coverage: {Path(output).resolve()}")
+    print(f"Status: {evaluation['status']}")
+    return 0
+
+
+def _phase2_compare(args: argparse.Namespace) -> int:
+    readiness = phase2_readiness(args.run_dir)
+    print(json.dumps(readiness, indent=2, sort_keys=True))
+    return 0
+
+
 def _test_data_connections(args: argparse.Namespace) -> int:
     run_dir = Path(args.runs_dir) / args.run_id
     if run_dir.exists() and any(run_dir.iterdir()) and not args.force:
@@ -776,6 +1013,131 @@ def _query_claim_dag_db(args: argparse.Namespace) -> int:
     return 0
 
 
+def _domains_list(args: argparse.Namespace) -> int:
+    registry = get_default_domain_registry()
+    for item in registry.list():
+        print(json.dumps(item.__dict__, sort_keys=True))
+    return 0
+
+
+def _domains_inspect(args: argparse.Namespace) -> int:
+    pack = get_default_domain_registry().get(args.domain)
+    payload = {
+        "domain_id": pack.domain_id,
+        "version": pack.version,
+        "supported_task_types": sorted(item.value for item in pack.supported_task_types()),
+        "tools": [item.model_dump(mode="json") for item in pack.tools()],
+        "benchmark_cases": [item.model_dump(mode="json") for item in pack.benchmark_cases()],
+        "readiness_gates": [item.model_dump(mode="json") for item in pack.readiness_gates()],
+        "guardrails": pack.guardrails(),
+    }
+    print(json.dumps(payload, indent=2, sort_keys=True))
+    return 0
+
+
+def _generic_acquisition_run(args: argparse.Namespace) -> int:
+    result = GenericDataAcquisitionAgent().run(
+        domain_id=args.domain,
+        question=args.question,
+        task_type=args.task_type,
+        mode=args.mode,
+        runs_dir=args.runs_dir,
+        run_id=args.run_id,
+        live_network=args.live_network,
+        force=args.force,
+    )
+    print(f"Generic acquisition run: {Path(result.run_dir).resolve()}")
+    print(f"Status: {result.status}")
+    print(f"Delegated to: {result.delegated_to or 'domain_pack_fixture'}")
+    return 0 if result.status != "blocked_live_network_permission_required" else 2
+
+
+def _hypotheses_optimize(args: argparse.Namespace) -> int:
+    run_dir = Path(args.runs_dir) / args.run_id
+    if run_dir.exists() and any(run_dir.iterdir()) and not args.force:
+        raise ValueError(f"optimizer artifacts are immutable; use --force or a new run id: {run_dir}")
+    hypotheses = _load_optimizer_hypotheses(args.hypotheses_json)
+    result = run_optimizer_v2(hypotheses, run_dir=run_dir, domain_id=args.domain, run_id=args.run_id)
+    print(f"Optimizer V2 run: {run_dir.resolve()}")
+    print(f"Hypotheses: {result.hypothesis_count}")
+    print(f"Killed: {result.killed_count}")
+    print(f"Pareto frontier: {', '.join(result.pareto_frontier_ids)}")
+    return 0
+
+
+def _hypotheses_portfolio(args: argparse.Namespace) -> int:
+    for row in read_jsonl(Path(args.run_dir) / "hypothesis_portfolio_v2.jsonl"):
+        print(json.dumps(row, sort_keys=True))
+    return 0
+
+
+def _failures_list(args: argparse.Namespace) -> int:
+    path = Path(args.run_dir) / "failure_memory.jsonl"
+    for row in read_jsonl(path) if path.exists() else []:
+        print(json.dumps(row, sort_keys=True))
+    return 0
+
+
+def _benchmark_run(args: argparse.Namespace) -> int:
+    pack = get_default_domain_registry().get(args.domain)
+    cases = pack.benchmark_cases()
+    result = GenericDataAcquisitionAgent().run(
+        domain_id=args.domain,
+        question=cases[0].prompt if cases else f"{args.domain} benchmark",
+        task_type=cases[0].task_type if cases else ScientificTaskType.DATA_EXTRACTION,
+        mode="fixture",
+        runs_dir=args.runs_dir,
+        run_id=args.run_id or f"benchmark-{args.domain}",
+        force=args.force,
+    )
+    print(f"Benchmark run: {Path(result.run_dir).resolve()}")
+    print(f"Domain: {args.domain}")
+    print(f"Variant: {args.variant}")
+    print(f"Status: {result.status}")
+    return 0
+
+
+def _load_optimizer_hypotheses(path: str | None) -> list[dict[str, object]]:
+    if not path:
+        return [
+            {
+                "id": "hyp-mixed-model",
+                "title": "Mixed interaction model",
+                "core_claim": "A mixed phonon and correlated-hopping model produces a stable superconducting branch in a bounded parameter region.",
+                "assumptions": ["mean-field reduction is explicit", "parameters are bounded"],
+                "testable_predictions": ["gap remains nonzero in mixed region", "energy ledger separates kinetic and interaction terms"],
+                "falsification_criteria": ["no stable gap solution", "energy closure fails"],
+                "supporting_evidence": ["phase1_minimal_bcs_tool/base_solution.json"],
+                "novelty_statement": "combines two mechanisms with explicit energy ledger",
+            },
+            {
+                "id": "hyp-unbounded",
+                "title": "Unbounded universal model",
+                "core_claim": "This mechanism can prove everything and is always true.",
+                "assumptions": [],
+                "testable_predictions": [],
+                "falsification_criteria": [],
+            },
+            {
+                "id": "hyp-contrarian",
+                "title": "Contrarian single-channel branch",
+                "core_claim": "A single-channel model may explain the same observables with fewer parameters.",
+                "assumptions": ["model comparison uses held-out data"],
+                "testable_predictions": ["mixed model does not improve held-out score"],
+                "falsification_criteria": ["mixed model improves every observable group under grouped holdout"],
+            },
+        ]
+    target = Path(path)
+    if target.suffix == ".jsonl":
+        return read_jsonl(target)
+    payload = read_json(target)
+    if isinstance(payload, list):
+        return payload
+    if isinstance(payload, dict) and "hypotheses" in payload:
+        return payload["hypotheses"]
+    raise ValueError("hypotheses file must be a JSON list, JSONL file, or {'hypotheses': [...]}")
+
+
 def _guard_live(provider_names: list[str], live_network: bool) -> None:
     live_providers = {"openalex", "crossref", "unpaywall", "arxiv"}
     if any(name in live_providers for name in provider_names) and not live_network:
@@ -852,6 +1214,30 @@ def main(argv: list[str] | None = None) -> int:
             return _run_superconductivity_campaign(args)
         if args.command == "validate-superconductivity-campaign":
             return _validate_superconductivity_campaign(args)
+        if args.command == "run-minimal-bcs":
+            return _run_minimal_bcs(args)
+        if args.command == "validate-minimal-bcs":
+            return _validate_minimal_bcs(args)
+        if args.command == "phase2-acquire":
+            return _phase2_acquire(args)
+        if args.command == "validate-phase2-acquisition":
+            return _validate_phase2_acquisition(args)
+        if args.command == "phase2-review-staging":
+            return _phase2_review_staging(args)
+        if args.command == "phase2-promote":
+            return _phase2_promote(args)
+        if args.command == "phase2-review-row":
+            return _phase2_review_row(args)
+        if args.command == "phase2-promote-reviewed":
+            return _phase2_promote_reviewed(args)
+        if args.command == "phase2-digitization-queue":
+            return _phase2_digitization_queue(args)
+        if args.command == "phase2-import-digitized":
+            return _phase2_import_digitized(args)
+        if args.command == "phase2-coverage":
+            return _phase2_coverage(args)
+        if args.command == "phase2-compare":
+            return _phase2_compare(args)
         if args.command == "test-live-models":
             return asyncio.run(_test_live_models(args))
         if args.command == "test-data-connections":
@@ -872,6 +1258,20 @@ def main(argv: list[str] | None = None) -> int:
             return _validate_claim_dag_db(args)
         if args.command == "query-claim-dag-db":
             return _query_claim_dag_db(args)
+        if args.command == "domains-list":
+            return _domains_list(args)
+        if args.command == "domains-inspect":
+            return _domains_inspect(args)
+        if args.command == "acquisition-run":
+            return _generic_acquisition_run(args)
+        if args.command == "hypotheses-optimize":
+            return _hypotheses_optimize(args)
+        if args.command == "hypotheses-portfolio":
+            return _hypotheses_portfolio(args)
+        if args.command == "failures-list":
+            return _failures_list(args)
+        if args.command == "benchmark-run":
+            return _benchmark_run(args)
     except (ValidationError, ValueError, ProviderError, CompletedRunError, NetworkDisabledError) as exc:
         print(f"Error: {exc}")
         return 2

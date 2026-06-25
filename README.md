@@ -772,6 +772,108 @@ PYTHONPATH=src python -m coscientist.cli test-live-models --live-model \
 
 V2.2 does not claim a discovery. It can produce constraints, equivalence classes, objections, and experiment proposals; public claims remain blocked behind expert review. See `docs/v22_superconductivity_theory_discrimination.md`.
 
+## Phase 2 LSCO Data Acquisition
+
+The Phase 2 LSCO workflow has a dedicated `Phase2DataAcquisitionAgent` for staged experimental-data acquisition. It searches or registers candidate sources, classifies observable coverage, extracts deterministic fixture table values, queues figure-only optical data for digitization, writes candidate rows to staging, applies promotion gates, reruns coverage, and reports whether model comparison is scientifically permitted.
+
+The extraction and curation layer also includes a conservative observable ontology, sample/doping metadata, text/TeX parser hooks, supplementary CSV/ZIP parsing, review decisions, reviewed promotion, data-claim linkage, adversarial readiness gates, and comparison-robustness artifacts. See `docs/phase2_live_extraction_readiness_layer.md`.
+
+Fixture mode is deterministic and uses no network:
+
+```bash
+PYTHONPATH=src python -m coscientist.cli phase2-acquire \
+  --mode fixture \
+  --runs-dir runs \
+  --run-id phase2-lsco-fixture
+```
+
+Live mode requires explicit network permission and does not fall back to fixtures:
+
+```bash
+PYTHONPATH=src python -m coscientist.cli phase2-acquire \
+  --mode live \
+  --live-network \
+  --max-queries 3 \
+  --max-results-per-query 5 \
+  --run-id phase2-lsco-live-smoke
+```
+
+Review staged rows and digitization tasks:
+
+```bash
+PYTHONPATH=src python -m coscientist.cli phase2-review-staging runs/phase2-lsco-fixture
+PYTHONPATH=src python -m coscientist.cli phase2-digitization-queue runs/phase2-lsco-fixture
+```
+
+Review and promote an approved row into a canonical dataset copy:
+
+```bash
+PYTHONPATH=src python -m coscientist.cli phase2-review-row runs/phase2-lsco-fixture \
+  --candidate-row-id <candidate-row-id> \
+  --decision approve \
+  --rationale "reviewed table provenance"
+
+PYTHONPATH=src python -m coscientist.cli phase2-promote-reviewed runs/phase2-lsco-fixture \
+  --canonical-dataset data/phase2_lsco.csv
+```
+
+Canonical `data/phase2_lsco.csv` is not modified unless promotion is explicitly enabled and deterministic gates pass. Figure-only optical values remain review-gated.
+
+## Domain Packs and Hypothesis Optimizer V2
+
+The platform now has a domain-independent checkpoint layer:
+
+- `DomainPack` protocol for domain-specific ontology, queries, validators, tools, gates, benchmarks, and guardrails.
+- `ScientificTaskType` policies for theory, data extraction, material comparison, phase identification, experiment selection, numerical modeling, and hidden-answer benchmarks.
+- `HypothesisV2` migration layer.
+- `HypothesisOptimizerV2` with hard gates, cheap kill tests, score provenance, Pareto portfolio, mutation operators, counterexample tasks, expected-information-gain actions, and failure memory.
+
+List and inspect packs:
+
+```bash
+PYTHONPATH=src python -m coscientist.cli domains-list
+PYTHONPATH=src python -m coscientist.cli domains-inspect --domain superconductivity_lsco
+```
+
+Run generic fixture acquisition:
+
+```bash
+PYTHONPATH=src python -m coscientist.cli acquisition-run \
+  --domain magnetic_transport_crse \
+  --question "CrSe magnetic transport AHE guardrail" \
+  --runs-dir runs \
+  --run-id crse-fixture \
+  --force
+```
+
+Run Optimizer V2:
+
+```bash
+PYTHONPATH=src python -m coscientist.cli hypotheses-optimize \
+  --domain superconductivity_lsco \
+  --runs-dir runs \
+  --run-id optimizer-v2-demo \
+  --force
+```
+
+Run a deterministic DomainPack benchmark smoke:
+
+```bash
+PYTHONPATH=src python -m coscientist.cli benchmark-run \
+  --domain xrd_phase_identification \
+  --runs-dir runs \
+  --run-id xrd-pack-smoke \
+  --force
+```
+
+The Gradio workbench includes a `Domain Packs / Optimizer V2` tab. Live Agent Meeting also receives Optimizer V2 artifacts in its round-zero tool context, so agents are instructed to advance queued verifier/data/repair actions instead of restating generic future work.
+
+See:
+
+- `docs/domain_pack_protocol.md`
+- `docs/hypothesis_optimizer_v2.md`
+- `docs/platform_generalization_and_optimizer_v2_plan.md`
+
 ## Testing
 
 Default tests are offline and deterministic:

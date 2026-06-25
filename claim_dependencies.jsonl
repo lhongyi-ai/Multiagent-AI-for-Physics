@@ -1,0 +1,8 @@
+{"child_claim_id": "claim-candidate-hamiltonian", "dependency_type": "requires", "load_bearing_path": true, "parent_claim_id": "claim-main-candidate", "schema_version": "v23"}
+{"child_claim_id": "claim-candidate-vertex", "dependency_type": "requires", "load_bearing_path": true, "parent_claim_id": "claim-main-candidate", "schema_version": "v23"}
+{"child_claim_id": "claim-candidate-free-energy", "dependency_type": "requires", "load_bearing_path": true, "parent_claim_id": "claim-main-candidate", "schema_version": "v23"}
+{"child_claim_id": "claim-candidate-optical", "dependency_type": "requires", "load_bearing_path": true, "parent_claim_id": "claim-main-candidate", "schema_version": "v23"}
+{"child_claim_id": "claim-candidate-parameters", "dependency_type": "requires", "load_bearing_path": true, "parent_claim_id": "claim-main-candidate", "schema_version": "v23"}
+{"child_claim_id": "claim-candidate-heldout", "dependency_type": "requires", "load_bearing_path": true, "parent_claim_id": "claim-main-candidate", "schema_version": "v23"}
+{"child_claim_id": "claim-candidate-competitor", "dependency_type": "requires", "load_bearing_path": true, "parent_claim_id": "claim-main-candidate", "schema_version": "v23"}
+{"child_claim_id": "claim-candidate-experiment", "dependency_type": "requires", "load_bearing_path": true, "parent_claim_id": "claim-main-candidate", "schema_version": "v23"}
