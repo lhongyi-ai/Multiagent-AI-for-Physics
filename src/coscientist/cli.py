@@ -30,6 +30,7 @@ from coscientist.atomic.campaign import (
 from coscientist.config import load_config, load_research_goal
 from coscientist.core import GenericDataAcquisitionAgent, get_default_domain_registry, run_optimizer_v2
 from coscientist.core.optimizer_v2 import mutation_operators
+from coscientist.core.proof_search import run_v3_proof_search_demo, validate_v3_proof_search_run
 from coscientist.core.tasks import ScientificTaskType, TaskPolicyRegistry
 from coscientist.discovery import run_discovery_project, resume_discovery_checkpoint, validate_discovery_artifacts
 from coscientist.literature.http import NetworkDisabledError
@@ -411,6 +412,14 @@ def build_parser() -> argparse.ArgumentParser:
     closed_loop_demo.add_argument("--rounds", type=int, default=3)
     closed_loop_demo.add_argument("--phase2-data", default="data/phase2_lsco.csv")
     closed_loop_demo.add_argument("--force", action="store_true")
+
+    v3_demo = subcommands.add_parser("run-v3-proof-search-demo", help="Run deterministic V3.0 proof-carrying scientific search demo.")
+    v3_demo.add_argument("--runs-dir", default="runs")
+    v3_demo.add_argument("--run-id", default="v3-proof-search-demo")
+    v3_demo.add_argument("--force", action="store_true")
+
+    validate_v3 = subcommands.add_parser("validate-v3-proof-search", help="Validate V3.0 proof-carrying scientific search artifacts.")
+    validate_v3.add_argument("run_dir")
     return parser
 
 
@@ -1133,6 +1142,31 @@ def _run_closed_loop_demo(args: argparse.Namespace) -> int:
     return 0
 
 
+def _run_v3_proof_search_demo(args: argparse.Namespace) -> int:
+    output = run_v3_proof_search_demo(runs_dir=args.runs_dir, run_id=args.run_id, force=args.force)
+    errors = validate_v3_proof_search_run(output)
+    print(f"V3 proof-search demo run: {Path(output).resolve()}")
+    final = read_json(Path(output) / "final_adjudication.json")
+    print(f"Final resolution: {final.get('final_resolution')}")
+    print(f"Generalization label: {final.get('generalization_label')}")
+    print(f"Validation: {'valid' if not errors else 'has errors'}")
+    if errors:
+        for error in errors:
+            print(f"Error: {error}")
+        return 2
+    return 0
+
+
+def _validate_v3_proof_search(args: argparse.Namespace) -> int:
+    errors = validate_v3_proof_search_run(args.run_dir)
+    if errors:
+        for error in errors:
+            print(f"Error: {error}")
+        return 2
+    print(f"Valid V3 proof-search artifacts: {Path(args.run_dir).resolve()}")
+    return 0
+
+
 def _load_optimizer_hypotheses(path: str | None) -> list[dict[str, object]]:
     if not path:
         return [
@@ -1310,6 +1344,10 @@ def main(argv: list[str] | None = None) -> int:
             return _benchmark_run(args)
         if args.command == "run-closed-loop-demo":
             return _run_closed_loop_demo(args)
+        if args.command == "run-v3-proof-search-demo":
+            return _run_v3_proof_search_demo(args)
+        if args.command == "validate-v3-proof-search":
+            return _validate_v3_proof_search(args)
     except (ValidationError, ValueError, ProviderError, CompletedRunError, NetworkDisabledError) as exc:
         print(f"Error: {exc}")
         return 2

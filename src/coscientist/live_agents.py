@@ -18,6 +18,7 @@ from coscientist.core.action_execution import (
     validate_action_execution_bundle,
 )
 from coscientist.core import run_optimizer_v2
+from coscientist.core.proof_search import run_v3_proof_search_demo, validate_v3_proof_search_run
 from coscientist.superconductivity.energy_decomposition import run_energy_decomposition_audit, validate_energy_decomposition_audit
 from coscientist.superconductivity.minimal_model import run_minimal_mixed_bcs_project, validate_minimal_mixed_bcs_run
 from coscientist.superconductivity.phase2_data import run_phase2_data_coverage_tool, validate_phase2_data_coverage_tool
@@ -637,6 +638,14 @@ def _prepare_meeting_tool_context(root: Path, session: MeetingSession, *, phase2
     decomposition_summary = read_json(decomposition_tool_dir / "audit_summary.json") if decomposition_tool_dir else {}
     decomposition_outcome = read_json(decomposition_tool_dir / "final_theory_outcome.json") if decomposition_tool_dir else {}
     decomposition_verifiers = read_jsonl(decomposition_tool_dir / "energy_decomposition_verifier_results.jsonl") if decomposition_tool_dir else []
+    v3_tool_id = "v3_proof_search_tool"
+    v3_enabled = _is_v3_proof_question(session.research_question)
+    v3_tool_dir = run_v3_proof_search_demo(root, run_id=v3_tool_id, force=True) if v3_enabled else None
+    v3_errors = validate_v3_proof_search_run(v3_tool_dir) if v3_tool_dir else []
+    v3_final = read_json(v3_tool_dir / "final_adjudication.json") if v3_tool_dir else {}
+    v3_snapshots = read_jsonl(v3_tool_dir / "scientific_state_snapshots.jsonl") if v3_tool_dir else []
+    v3_transitions = read_jsonl(v3_tool_dir / "claim_transition_records.jsonl") if v3_tool_dir else []
+    v3_tool_gaps = read_jsonl(v3_tool_dir / "tool_gaps.jsonl") if v3_tool_dir else []
     optimizer_tool_id = "optimizer_v2_tool"
     optimizer_result = run_optimizer_v2(
         _meeting_optimizer_hypotheses(session.research_question),
@@ -696,6 +705,27 @@ def _prepare_meeting_tool_context(root: Path, session: MeetingSession, *, phase2
                 if decomposition_enabled
                 else []
             ),
+            *(
+                [
+                    f"{v3_tool_id}/compiled_problem.json",
+                    f"{v3_tool_id}/proof_obligations.jsonl",
+                    f"{v3_tool_id}/scientific_state_snapshots.jsonl",
+                    f"{v3_tool_id}/tool_capability_manifest.json",
+                    f"{v3_tool_id}/tool_gaps.jsonl",
+                    f"{v3_tool_id}/tool_build_records.jsonl",
+                    f"{v3_tool_id}/candidate_archive.jsonl",
+                    f"{v3_tool_id}/action_executions.jsonl",
+                    f"{v3_tool_id}/verifier_results.jsonl",
+                    f"{v3_tool_id}/independent_verification_results.jsonl",
+                    f"{v3_tool_id}/certificates.jsonl",
+                    f"{v3_tool_id}/claim_transition_records.jsonl",
+                    f"{v3_tool_id}/state_disputes.jsonl",
+                    f"{v3_tool_id}/final_adjudication.json",
+                    f"{v3_tool_id}/run_summary.md",
+                ]
+                if v3_enabled
+                else []
+            ),
         ],
         "hamiltonian_terms": hamiltonian.get("terms", {}),
         "base_solution": {
@@ -746,6 +776,16 @@ def _prepare_meeting_tool_context(root: Path, session: MeetingSession, *, phase2
             "summary": decomposition_summary,
             "outcome": decomposition_outcome,
             "verifier_results": decomposition_verifiers,
+        },
+        "v3_proof_search": {
+            "enabled": v3_enabled,
+            "tool_run_dir": v3_tool_id if v3_enabled else None,
+            "validation": "valid" if v3_enabled and not v3_errors else "not_run" if not v3_enabled else "invalid",
+            "validation_errors": v3_errors,
+            "final_adjudication": v3_final,
+            "latest_snapshot": v3_snapshots[-1] if v3_snapshots else {},
+            "claim_transitions": v3_transitions,
+            "tool_gaps": v3_tool_gaps,
         },
     }
     write_json(root / "meeting_tool_context.json", context)
@@ -798,12 +838,31 @@ def _prepare_meeting_tool_context(root: Path, session: MeetingSession, *, phase2
                 if decomposition_enabled
                 else []
             ),
+            *(
+                [
+                    {
+                        "schema_version": "v30",
+                        "tool_call_id": f"tool-{session.meeting_id}-v3-proof-search",
+                        "meeting_id": session.meeting_id,
+                        "tool_name": "v3_proof_carrying_scientific_search",
+                        "status": "complete" if not v3_errors else "invalid",
+                        "artifact_dir": v3_tool_id,
+                        "created_at": datetime.now(UTC).isoformat(),
+                        "summary": _v3_proof_search_summary(context),
+                    }
+                ]
+                if v3_enabled
+                else []
+            ),
         ],
     )
     return context
 
 
 def _tool_context_message(session: MeetingSession, tool_context: dict[str, object]) -> MeetingMessage:
+    tool_lines = ["Tool Call: phase1_minimal_mixed_bcs_solver", "Tool Call: executable_theory_tools"]
+    if isinstance(tool_context.get("v3_proof_search"), dict) and tool_context["v3_proof_search"].get("enabled"):  # type: ignore[index]
+        tool_lines.append("Tool Call: v3_proof_carrying_scientific_search")
     return MeetingMessage(
         message_id="msg-00-executable-theory-tools",
         meeting_id=session.meeting_id,
@@ -811,8 +870,8 @@ def _tool_context_message(session: MeetingSession, tool_context: dict[str, objec
         agent_id="curator",
         role="curator",
         provider="deterministic-tool",
-        model="phase1_minimal_mixed_bcs_solver+energy_decomposition_audit",
-        content="Tool Call: phase1_minimal_mixed_bcs_solver\nTool Call: executable_theory_tools\n" + _tool_prompt_summary(tool_context),
+        model="phase1_minimal_mixed_bcs_solver+energy_decomposition_audit+v3_proof_search",
+        content="\n".join(tool_lines) + "\n" + _tool_prompt_summary(tool_context),
         cited_artifact_ids=list(tool_context.get("artifact_ids", [])),
         critic_influenced=False,
         created_at=datetime.now(UTC),
@@ -986,6 +1045,7 @@ def _tool_prompt_summary(tool_context: dict[str, object]) -> str:
             f"Phase 2 conclusion: {tool_context.get('phase2_conclusion')}",
             _phase2_tool_summary(tool_context),
             _energy_decomposition_summary(tool_context),
+            _v3_proof_search_summary(tool_context),
             _optimizer_tool_summary(tool_context),
             _closed_loop_prompt_summary(tool_context),
             "Citable artifact IDs: " + ", ".join(str(item) for item in artifact_ids),
@@ -1036,6 +1096,29 @@ def _energy_decomposition_summary(tool_context: dict[str, object]) -> str:
         f"- model_dependent_quantities: {outcome.get('model_dependent_quantities') if isinstance(outcome, dict) else []}",
         "Hard rule: do not claim symbolic derivations or ED tests are complete unless citing energy_decomposition_audit_tool artifacts.",
         "LSCO data are a parallel validation line and must not block this theoretical audit.",
+    ]
+    return "\n".join(lines)
+
+
+def _v3_proof_search_summary(tool_context: dict[str, object]) -> str:
+    proof = tool_context.get("v3_proof_search")
+    if not isinstance(proof, dict) or not proof.get("enabled"):
+        return "V3 proof-carrying search: not run"
+    final = proof.get("final_adjudication", {})
+    latest_snapshot = proof.get("latest_snapshot", {})
+    transitions = proof.get("claim_transitions", [])
+    accepted = [item for item in transitions if isinstance(item, dict) and item.get("decision") == "accepted"]
+    rejected = [item for item in transitions if isinstance(item, dict) and item.get("decision") == "rejected"]
+    lines = [
+        "V3 proof-carrying search:",
+        f"- validation: {proof.get('validation')}",
+        f"- final_resolution: {final.get('final_resolution') if isinstance(final, dict) else None}",
+        f"- generalization_label: {final.get('generalization_label') if isinstance(final, dict) else None}",
+        f"- conclusion: {final.get('conclusion') if isinstance(final, dict) else None}",
+        f"- latest_snapshot_version: {latest_snapshot.get('snapshot_version') if isinstance(latest_snapshot, dict) else None}",
+        f"- accepted_transitions: {[item.get('transition_id') for item in accepted]}",
+        f"- rejected_transitions: {[item.get('transition_id') for item in rejected]}",
+        "Hard rule: agent prose cannot promote claims; only proof-carrying transitions with exact evidence locators can alter verified state.",
     ]
     return "\n".join(lines)
 
@@ -1774,6 +1857,14 @@ def _is_decomposition_uniqueness_question(question: str) -> bool:
         or "optical sum" in lowered
         or "current operator" in lowered
         or "unique" in lowered and "energy" in lowered
+    )
+
+
+def _is_v3_proof_question(question: str) -> bool:
+    lowered = question.lower()
+    return _is_decomposition_uniqueness_question(question) or (
+        "proof" in lowered
+        and ("claim" in lowered or "certificate" in lowered or "counterexample" in lowered)
     )
 
 

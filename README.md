@@ -888,6 +888,38 @@ See:
 - `docs/closed_loop_scientific_action_execution.md`
 - `docs/platform_generalization_and_optimizer_v2_plan.md`
 
+## V3.0 Proof-Carrying Scientific Search
+
+V3.0 adds a stricter scientific-state layer for proof-carrying search. Natural-language agents may propose claims, tools, repairs, and interpretations, but they cannot directly mark scientific claims as verified. Verified state changes require a proof-carrying transition from the deterministic state machine, backed by a completed action execution, a verified certificate, exact evidence locators, passing acceptance conditions, and independent verification when required.
+
+The current deterministic pilot compiles a bounded finite representation-dependence problem, builds proof obligations, detects missing capabilities, validates tool registration records, runs a finite counterexample fixture, rejects an unsupported agent completion claim, accepts a proof-carrying contradiction transition, and records the result with a `FINITE_CASE_ONLY` generalization label.
+
+Run the offline V3 demo:
+
+```bash
+PYTHONPATH=src python -m coscientist.cli run-v3-proof-search-demo \
+  --runs-dir runs \
+  --run-id v3-proof-search-demo \
+  --force
+
+PYTHONPATH=src python -m coscientist.cli validate-v3-proof-search runs/v3-proof-search-demo
+```
+
+The Gradio workbench includes a `V3 Proof Search` tab with scientific-state snapshots, proof obligations, claim transitions, certificates, tool gaps, candidate archive, state disputes, and independent verification rows. For decomposition/gauge/observability superconductivity questions, Live Agent Room round zero also injects the V3 proof-carrying result into `meeting_tool_context.json`; agents must treat that as authoritative state rather than repeating generic future work.
+
+V3.0 does not prove a general theorem about all lattice superconductors. The included pilot only demonstrates a bounded finite counterexample fixture and labels its scope accordingly.
+
+See:
+
+- `docs/v3_proof_carrying_scientific_search_plan.md`
+- `docs/scientific_state_machine.md`
+- `docs/proof_carrying_claims.md`
+- `docs/evidence_locators.md`
+- `docs/tool_capability_registry.md`
+- `docs/v3_frontend.md`
+- `docs/v3_cli.md`
+- `docs/v3_development_note.md`
+
 ## Testing
 
 Default tests are offline and deterministic:

@@ -546,6 +546,56 @@ class OfflineDiscoveryFrontend:
 
         return closed_loop_latest_state(run_dir)
 
+    def run_v3_proof_search_demo(self, *, run_id: str = "v3-proof-search-demo", force: bool = True) -> str:
+        from coscientist.core.proof_search import run_v3_proof_search_demo
+
+        return str(run_v3_proof_search_demo(runs_dir=self.runs_dir, run_id=run_id, force=force))
+
+    def validate_v3_proof_search(self, run_dir: str | Path) -> list[str]:
+        from coscientist.core.proof_search import validate_v3_proof_search_run
+
+        return validate_v3_proof_search_run(run_dir)
+
+    def v3_snapshot_rows(self, run_dir: str | Path) -> list[dict[str, object]]:
+        path = Path(run_dir) / "scientific_state_snapshots.jsonl"
+        return read_jsonl(path) if path.exists() else []
+
+    def v3_obligation_rows(self, run_dir: str | Path) -> list[dict[str, object]]:
+        path = Path(run_dir) / "proof_obligations.jsonl"
+        return read_jsonl(path) if path.exists() else []
+
+    def v3_claim_transition_rows(self, run_dir: str | Path) -> list[dict[str, object]]:
+        path = Path(run_dir) / "claim_transition_records.jsonl"
+        return read_jsonl(path) if path.exists() else []
+
+    def v3_certificate_rows(self, run_dir: str | Path) -> list[dict[str, object]]:
+        path = Path(run_dir) / "certificates.jsonl"
+        return read_jsonl(path) if path.exists() else []
+
+    def v3_tool_gap_rows(self, run_dir: str | Path) -> list[dict[str, object]]:
+        path = Path(run_dir) / "tool_gaps.jsonl"
+        return read_jsonl(path) if path.exists() else []
+
+    def v3_tool_build_rows(self, run_dir: str | Path) -> list[dict[str, object]]:
+        path = Path(run_dir) / "tool_build_records.jsonl"
+        return read_jsonl(path) if path.exists() else []
+
+    def v3_candidate_archive_rows(self, run_dir: str | Path) -> list[dict[str, object]]:
+        path = Path(run_dir) / "candidate_archive.jsonl"
+        return read_jsonl(path) if path.exists() else []
+
+    def v3_state_dispute_rows(self, run_dir: str | Path) -> list[dict[str, object]]:
+        path = Path(run_dir) / "state_disputes.jsonl"
+        return read_jsonl(path) if path.exists() else []
+
+    def v3_independent_verification_rows(self, run_dir: str | Path) -> list[dict[str, object]]:
+        path = Path(run_dir) / "independent_verification_results.jsonl"
+        return read_jsonl(path) if path.exists() else []
+
+    def v3_final_adjudication(self, run_dir: str | Path) -> dict[str, object]:
+        path = Path(run_dir) / "final_adjudication.json"
+        return read_json(path) if path.exists() else {}
+
     def live_agent_bcs_verifier_rows(self, run_dir: str | Path) -> list[dict[str, object]]:
         from coscientist.live_agents import meeting_bcs_verifier_result_rows
 
@@ -877,6 +927,15 @@ DOMAIN_PACK_COLUMNS = ["domain_id", "version", "task_types", "tool_count", "benc
 OPTIMIZER_PORTFOLIO_COLUMNS = ["hypothesis_id", "role", "rationale", "pareto_frontier"]
 FAILURE_MEMORY_COLUMNS = ["failure_id", "hypothesis_id", "domain_id", "failure_mode", "lesson"]
 INFORMATION_GAIN_COLUMNS = ["action_id", "hypothesis_id", "domain_id", "action_type", "tool_id", "expected_information_gain", "success_probability", "feasibility", "cost", "priority", "execution_status", "rationale"]
+V3_SNAPSHOT_COLUMNS = ["snapshot_version", "claim_dag_hash", "obligation_graph_hash", "artifact_manifest_hash", "candidate_archive_version", "failure_memory_version"]
+V3_OBLIGATION_COLUMNS = ["obligation_id", "statement", "obligation_type", "status", "required_capabilities", "required_certificate_types", "current_blocker", "generalization_requirement"]
+V3_TRANSITION_COLUMNS = ["transition_id", "claim_id", "previous_status", "requested_status", "resulting_status", "decision", "rejection_reasons", "certificate_ids", "actor_type"]
+V3_CERTIFICATE_COLUMNS = ["certificate_id", "certificate_type", "claim_id", "obligation_id", "status", "generalization_label", "artifact_ids", "checksum_sha256"]
+V3_TOOL_GAP_COLUMNS = ["tool_gap_id", "obligation_id", "missing_capability", "status", "affected_claim_ids"]
+V3_TOOL_BUILD_COLUMNS = ["tool_build_id", "tool_contract_id", "tool_id", "status", "security_status", "unit_test_status", "scientific_fixture_status", "registration_decision"]
+V3_CANDIDATE_COLUMNS = ["candidate_id", "candidate_type", "mutation_strategy", "behavior_descriptors", "hard_constraint_results", "scores", "certificate_status"]
+V3_DISPUTE_COLUMNS = ["dispute_id", "topic", "authoritative_result", "adjudication_reason", "followup_action"]
+V3_INDEPENDENT_COLUMNS = ["independent_verification_id", "certificate_id", "implementation_path", "status", "discrepancies"]
 
 
 def _table(records: list[dict[str, object]], columns: list[str]) -> list[list[object]]:
@@ -1036,6 +1095,35 @@ def create_gradio_workbench(*, runs_dir: str | Path = "runs"):
             _table(service.claim_dag_edge_rows(run_dir), CLAIM_DAG_EDGE_COLUMNS),
             _table(service.claim_dag_gate_rows(run_dir), CLAIM_DAG_GATE_COLUMNS),
             service.claim_dag_mermaid(run_dir),
+        )
+
+    def run_v3_demo(run_id: str):
+        run_dir = service.run_v3_proof_search_demo(run_id=run_id or "v3-proof-search-demo", force=True)
+        errors = service.validate_v3_proof_search(run_dir)
+        return inspect_v3(run_dir, validation_override="valid" if not errors else "\n".join(errors))
+
+    def inspect_v3(run_dir: str, validation_override: str | None = None):
+        validation = validation_override
+        if validation is None:
+            errors = service.validate_v3_proof_search(run_dir)
+            validation = "valid" if not errors else "\n".join(errors)
+        final = service.v3_final_adjudication(run_dir)
+        summary_path = Path(run_dir) / "run_summary.md"
+        summary = summary_path.read_text(encoding="utf-8") if summary_path.exists() else ""
+        return (
+            run_dir,
+            validation,
+            final,
+            _table(service.v3_snapshot_rows(run_dir), V3_SNAPSHOT_COLUMNS),
+            _table(service.v3_obligation_rows(run_dir), V3_OBLIGATION_COLUMNS),
+            _table(service.v3_claim_transition_rows(run_dir), V3_TRANSITION_COLUMNS),
+            _table(service.v3_certificate_rows(run_dir), V3_CERTIFICATE_COLUMNS),
+            _table(service.v3_tool_gap_rows(run_dir), V3_TOOL_GAP_COLUMNS),
+            _table(service.v3_tool_build_rows(run_dir), V3_TOOL_BUILD_COLUMNS),
+            _table(service.v3_candidate_archive_rows(run_dir), V3_CANDIDATE_COLUMNS),
+            _table(service.v3_state_dispute_rows(run_dir), V3_DISPUTE_COLUMNS),
+            _table(service.v3_independent_verification_rows(run_dir), V3_INDEPENDENT_COLUMNS),
+            summary,
         )
 
     def live_meeting(run_dir: str, question: str, rounds: int, live_model: bool, phase2_data_path: str):
@@ -1273,6 +1361,24 @@ def create_gradio_workbench(*, runs_dir: str | Path = "runs"):
             claim_dag_edges = gr.Dataframe(headers=CLAIM_DAG_EDGE_COLUMNS, label="Dependencies")
             claim_dag_gate = gr.Dataframe(headers=CLAIM_DAG_GATE_COLUMNS, label="Deterministic total gate")
             claim_dag_graph = gr.Textbox(lines=18, label="Mermaid graph", show_copy_button=True)
+        with gr.Tab("V3 Proof Search"):
+            v3_run_id = gr.Textbox(value="v3-proof-search-demo", label="Run ID")
+            v3_run_button = gr.Button("Run V3 Proof-Carrying Demo")
+            v3_existing_run = gr.Textbox(label="Existing V3 run directory")
+            v3_inspect_button = gr.Button("Inspect Existing V3 Run")
+            v3_run_dir = gr.Textbox(label="V3 run directory")
+            v3_validation = gr.Textbox(label="Validation")
+            v3_final = gr.JSON(label="Final adjudication")
+            v3_snapshots = gr.Dataframe(headers=V3_SNAPSHOT_COLUMNS, label="Scientific State Snapshot")
+            v3_obligations = gr.Dataframe(headers=V3_OBLIGATION_COLUMNS, label="Proof Obligation Board")
+            v3_transitions = gr.Dataframe(headers=V3_TRANSITION_COLUMNS, label="Proof-Carrying Claim Inspector")
+            v3_certificates = gr.Dataframe(headers=V3_CERTIFICATE_COLUMNS, label="Scientific Certificates")
+            v3_tool_gaps = gr.Dataframe(headers=V3_TOOL_GAP_COLUMNS, label="Tool Gap Queue")
+            v3_tool_builds = gr.Dataframe(headers=V3_TOOL_BUILD_COLUMNS, label="Tool Build Records")
+            v3_candidates = gr.Dataframe(headers=V3_CANDIDATE_COLUMNS, label="Candidate Archive")
+            v3_disputes = gr.Dataframe(headers=V3_DISPUTE_COLUMNS, label="State Disputes")
+            v3_independent = gr.Dataframe(headers=V3_INDEPENDENT_COLUMNS, label="Independent Verification")
+            v3_summary = gr.Textbox(lines=18, label="Run summary", show_copy_button=True)
         with gr.Tab("Live Agent Room"):
             meeting_run_dir = gr.Textbox(label="Run directory", placeholder="Leave blank to create a new meeting run directory")
             meeting_question = gr.Textbox(lines=4, label="Research question")
@@ -1361,6 +1467,23 @@ def create_gradio_workbench(*, runs_dir: str | Path = "runs"):
         inspect_button.click(inspect_search_os, inputs=[run_dir], outputs=[elo, tournament, strategy, allocation, verifiers, reproduction, tasks, checkpoint])
         ledger_button.click(inspect_ledgers, inputs=[run_dir], outputs=[claims, predictions, routing, discrepancies])
         claim_dag_button.click(build_claim_dag, inputs=[claim_dag_run_dir, claim_dag_candidate], outputs=[claim_dag_db, claim_dag_validation, claim_dag_nodes, claim_dag_edges, claim_dag_gate, claim_dag_graph])
+        v3_outputs = [
+            v3_run_dir,
+            v3_validation,
+            v3_final,
+            v3_snapshots,
+            v3_obligations,
+            v3_transitions,
+            v3_certificates,
+            v3_tool_gaps,
+            v3_tool_builds,
+            v3_candidates,
+            v3_disputes,
+            v3_independent,
+            v3_summary,
+        ]
+        v3_run_button.click(run_v3_demo, inputs=[v3_run_id], outputs=v3_outputs)
+        v3_inspect_button.click(inspect_v3, inputs=[v3_existing_run], outputs=v3_outputs)
         meeting_button.click(
             live_meeting,
             inputs=[meeting_run_dir, meeting_question, meeting_rounds, meeting_live, meeting_phase2_data],
