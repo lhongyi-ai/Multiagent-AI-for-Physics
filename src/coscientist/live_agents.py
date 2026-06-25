@@ -3,6 +3,7 @@ from __future__ import annotations
 import asyncio
 import hashlib
 import os
+import shutil
 from datetime import UTC, datetime
 from pathlib import Path
 from typing import Iterator
@@ -10,6 +11,12 @@ from typing import Iterator
 from coscientist.pilot.artifacts import read_json, read_jsonl, write_json, write_jsonl
 from coscientist.providers.base import ProviderError
 from coscientist.providers.openai_compatible import OpenAICompatibleProvider
+from coscientist.core.action_execution import (
+    action_execution_rows,
+    execute_next_scientific_action,
+    latest_action_state,
+    validate_action_execution_bundle,
+)
 from coscientist.core import run_optimizer_v2
 from coscientist.superconductivity.energy_decomposition import run_energy_decomposition_audit, validate_energy_decomposition_audit
 from coscientist.superconductivity.minimal_model import run_minimal_mixed_bcs_project, validate_minimal_mixed_bcs_run
@@ -42,6 +49,8 @@ MEETING_ARTIFACTS = [
     "meeting_held_out_predictions.jsonl",
     "meeting_tool_context.json",
     "meeting_tool_calls.jsonl",
+    "closed_loop_action_state.json",
+    "closed_loop_action_executions.jsonl",
 ]
 
 
@@ -96,6 +105,16 @@ def default_agent_definitions(*, live_model: bool = False) -> list[AgentDefiniti
             model=model,
             temperature=0.0,
         ),
+        AgentDefinition(
+            agent_id="closed_loop_action_executor",
+            title="Closed-loop action executor",
+            expertise="Runs one selected optimizer action before agent discussion and records artifacts.",
+            goal="Convert optimizer actions into validated scientific state.",
+            role="curator",
+            provider="mock",
+            model="scientific_action_executor_v28",
+            temperature=0.0,
+        ),
     ]
 
 
@@ -110,6 +129,8 @@ def run_live_agent_meeting(
 ) -> Path:
     root = Path(run_dir)
     root.mkdir(parents=True, exist_ok=True)
+    if force:
+        _clear_meeting_runtime_artifacts(root)
     research_question = research_question.strip()
     if not research_question:
         raise ValueError("research question is required for an agent meeting")
@@ -126,6 +147,7 @@ def run_live_agent_meeting(
         updated_at=now,
     )
     agents = default_agent_definitions(live_model=live_model)
+    discussion_agents = [agent for agent in agents if agent.agent_id != "closed_loop_action_executor"]
     messages: list[MeetingMessage] = []
     responses: list[MeetingAgentResponse] = []
     calls: list[ProviderCallRecordV23] = []
@@ -137,14 +159,38 @@ def run_live_agent_meeting(
     if live_model and not live_available:
         session.status = "live_connection_blocked"
         session.stopping_reason = "live_model_requested_but_openrouter_or_openai_credentials_missing"
+        _write_empty_closed_loop_state(root, "not_started_live_model_blocked")
         _write_meeting_artifacts(root, agents, session, messages, responses, _blocked_call_records(session, agents), checkpoints)
         _write_science_progress_artifacts(root, session, messages, responses, allow_deterministic_scaffold=False)
         return root
 
     for round_number in range(1, max_rounds + 1):
         session.current_round = round_number
+        action_state = execute_next_scientific_action(
+            root,
+            round_number=round_number,
+            live_model=live_available,
+            live_network=False,
+            phase2_data_path=phase2_data_path,
+        )
+        tool_context = _with_closed_loop_state(tool_context, action_state.model_dump(mode="json"))
+        if action_state.selected_action_id:
+            action_message = _closed_loop_action_message(session, round_number, action_state.model_dump(mode="json"))
+            messages.append(action_message)
+        checkpoints.append(
+            {
+                "schema_version": "v28",
+                "meeting_id": session.meeting_id,
+                "round_number": round_number,
+                "event": "closed_loop_action_execution",
+                "selected_action_id": action_state.selected_action_id,
+                "status": action_state.status,
+                "bundle_dir": action_state.bundle_dir,
+                "created_at": datetime.now(UTC).isoformat(),
+            }
+        )
         critic_objections = [message.content for message in messages if message.role == "critic"][-2:]
-        for agent in agents:
+        for agent in discussion_agents:
             prompt = _meeting_prompt(
                 session,
                 agent,
@@ -221,6 +267,8 @@ def stream_live_agent_meeting(
 ) -> Iterator[tuple[str, list[dict[str, object]], list[dict[str, object]], dict[str, object]]]:
     root = Path(run_dir)
     root.mkdir(parents=True, exist_ok=True)
+    if force:
+        _clear_meeting_runtime_artifacts(root)
     research_question = research_question.strip()
     if not research_question:
         raise ValueError("research question is required for an agent meeting")
@@ -239,6 +287,7 @@ def stream_live_agent_meeting(
         updated_at=now,
     )
     agents = default_agent_definitions(live_model=live_model)
+    discussion_agents = [agent for agent in agents if agent.agent_id != "closed_loop_action_executor"]
     messages: list[MeetingMessage] = []
     responses: list[MeetingAgentResponse] = []
     calls: list[ProviderCallRecordV23] = []
@@ -251,6 +300,7 @@ def stream_live_agent_meeting(
         session.status = "live_connection_blocked"
         session.stopping_reason = "live_model_requested_but_openrouter_or_openai_credentials_missing"
         calls = _blocked_call_records(session, agents)
+        _write_empty_closed_loop_state(root, "not_started_live_model_blocked")
         _write_meeting_artifacts(root, agents, session, messages, responses, calls, checkpoints)
         _write_science_progress_artifacts(root, session, messages, responses, allow_deterministic_scaffold=False)
         yield _status_transcript(session), [], _provider_rows(root), read_json(root / "meeting_session.json")
@@ -261,8 +311,36 @@ def stream_live_agent_meeting(
         yield _transcript_markdown(message_rows), _meeting_rows(message_rows), _provider_rows(root), read_json(root / "meeting_session.json")
     for round_number in range(1, max_rounds + 1):
         session.current_round = round_number
+        action_state = execute_next_scientific_action(
+            root,
+            round_number=round_number,
+            live_model=live_available,
+            live_network=False,
+            phase2_data_path=phase2_data_path,
+        )
+        tool_context = _with_closed_loop_state(tool_context, action_state.model_dump(mode="json"))
+        if action_state.selected_action_id:
+            action_message = _closed_loop_action_message(session, round_number, action_state.model_dump(mode="json"))
+            messages.append(action_message)
+        checkpoints.append(
+            {
+                "schema_version": "v28",
+                "meeting_id": session.meeting_id,
+                "round_number": round_number,
+                "event": "closed_loop_action_execution",
+                "selected_action_id": action_state.selected_action_id,
+                "status": action_state.status,
+                "bundle_dir": action_state.bundle_dir,
+                "created_at": datetime.now(UTC).isoformat(),
+            }
+        )
+        session.updated_at = datetime.now(UTC)
+        if action_state.selected_action_id:
+            _write_meeting_artifacts(root, agents, session, messages, responses, calls, checkpoints)
+            message_rows = [item.model_dump(mode="json") for item in messages]
+            yield _transcript_markdown(message_rows), _meeting_rows(message_rows), _provider_rows(root), read_json(root / "meeting_session.json")
         critic_objections = [message.content for message in messages if message.role == "critic"][-2:]
-        for agent in agents:
+        for agent in discussion_agents:
             prompt = _meeting_prompt(
                 session,
                 agent,
@@ -354,6 +432,9 @@ def validate_meeting_artifacts(run_dir: str | Path) -> list[str]:
         _validate_jsonl(root / "meeting_candidate_model_sketches.jsonl", CandidateModelSketch)
         _validate_jsonl(root / "meeting_verifier_tasks.jsonl", VerifierTaskSpec)
         _validate_jsonl(root / "meeting_held_out_predictions.jsonl", HeldOutPredictionSpec)
+        state = latest_action_state(root)
+        if not state:
+            errors.append("missing closed-loop action state")
     except Exception as exc:
         return [f"invalid meeting artifact: {exc}"]
     agent_ids = {agent.agent_id for agent in agents}
@@ -372,6 +453,9 @@ def validate_meeting_artifacts(run_dir: str | Path) -> list[str]:
         errors.append("ready campaign diagnostic lacks a model sketch")
     if _contains_secret_like_text(root, ["meeting_session.json", "meeting_messages.jsonl", "provider_calls.jsonl"]):
         errors.append("secret-like content appears in meeting artifacts")
+    for bundle in sorted((root / "action_executions").glob("*")) if (root / "action_executions").exists() else []:
+        if bundle.is_dir():
+            errors.extend(f"{bundle.name}: {error}" for error in validate_action_execution_bundle(bundle))
     return errors
 
 
@@ -489,6 +573,39 @@ def meeting_tool_context(run_dir: str | Path) -> dict[str, object]:
 def meeting_tool_call_rows(run_dir: str | Path) -> list[dict[str, object]]:
     path = Path(run_dir) / "meeting_tool_calls.jsonl"
     return read_jsonl(path) if path.exists() else []
+
+
+def closed_loop_action_rows(run_dir: str | Path) -> list[dict[str, object]]:
+    rows = []
+    for item in action_execution_rows(run_dir):
+        action = item.get("action") if isinstance(item.get("action"), dict) else {}
+        policy = item.get("policy_decision") if isinstance(item.get("policy_decision"), dict) else {}
+        result = item.get("execution_result") if isinstance(item.get("execution_result"), dict) else {}
+        dag = item.get("claim_dag_diff") if isinstance(item.get("claim_dag_diff"), dict) else {}
+        optimizer = item.get("optimizer_diff") if isinstance(item.get("optimizer_diff"), dict) else {}
+        rows.append(
+            {
+                "selected_action_id": item.get("selected_action_id"),
+                "tool_id": action.get("tool_id"),
+                "status": item.get("status"),
+                "expected_information_gain": action.get("expected_information_gain"),
+                "priority": action.get("priority"),
+                "policy_status": policy.get("status"),
+                "execution_mode": policy.get("execution_mode"),
+                "duration_ms": result.get("duration_ms"),
+                "generated_artifacts": result.get("generated_artifacts"),
+                "verifier_count": len(result.get("verifier_results") or []),
+                "claim_dag_checks": dag.get("added_check_ids"),
+                "claim_dag_blockers": dag.get("added_blocker_ids"),
+                "optimizer_new_actions": optimizer.get("new_action_ids"),
+                "bundle_dir": item.get("bundle_dir"),
+            }
+        )
+    return rows
+
+
+def closed_loop_latest_state(run_dir: str | Path) -> dict[str, object]:
+    return latest_action_state(run_dir)
 
 
 def meeting_bcs_verifier_result_rows(run_dir: str | Path) -> list[dict[str, object]]:
@@ -702,6 +819,121 @@ def _tool_context_message(session: MeetingSession, tool_context: dict[str, objec
     )
 
 
+def _with_closed_loop_state(tool_context: dict[str, object], action_state: dict[str, object]) -> dict[str, object]:
+    updated = dict(tool_context)
+    prior = updated.get("closed_loop_actions")
+    actions = list(prior) if isinstance(prior, list) else []
+    actions.append(action_state)
+    updated["closed_loop_actions"] = actions[-4:]
+    updated["latest_closed_loop_action"] = action_state
+    artifact_ids = list(updated.get("artifact_ids", []))
+    bundle = action_state.get("bundle_dir")
+    if isinstance(bundle, str) and bundle:
+        artifact_ids.extend(
+            [
+                f"{bundle}/action_request.json",
+                f"{bundle}/execution_result.json",
+                f"{bundle}/verifier_results.jsonl",
+                f"{bundle}/claim_dag_diff.json",
+                f"{bundle}/optimizer_diff.json",
+                f"{bundle}/execution_summary.json",
+            ]
+        )
+    updated["artifact_ids"] = sorted(dict.fromkeys(str(item) for item in artifact_ids))
+    return updated
+
+
+def _closed_loop_action_message(session: MeetingSession, round_number: int, action_state: dict[str, object]) -> MeetingMessage:
+    return MeetingMessage(
+        message_id=f"msg-{round_number:02d}-closed-loop-action",
+        meeting_id=session.meeting_id,
+        round_number=round_number,
+        agent_id="closed_loop_action_executor",
+        role="curator",
+        provider="deterministic-tool",
+        model="scientific_action_executor_v28",
+        content=_closed_loop_action_summary(action_state),
+        cited_artifact_ids=_closed_loop_artifact_ids(action_state),
+        critic_influenced=False,
+        created_at=datetime.now(UTC),
+    )
+
+
+def _closed_loop_artifact_ids(action_state: dict[str, object]) -> list[str]:
+    bundle = action_state.get("bundle_dir")
+    if not isinstance(bundle, str) or not bundle:
+        return []
+    return [
+        f"{bundle}/action_request.json",
+        f"{bundle}/execution_result.json",
+        f"{bundle}/verifier_results.jsonl",
+        f"{bundle}/claim_dag_diff.json",
+        f"{bundle}/optimizer_diff.json",
+        f"{bundle}/execution_summary.json",
+    ]
+
+
+def _closed_loop_action_summary(action_state: dict[str, object]) -> str:
+    action = action_state.get("action") if isinstance(action_state.get("action"), dict) else {}
+    result = action_state.get("execution_result") if isinstance(action_state.get("execution_result"), dict) else {}
+    policy = action_state.get("policy_decision") if isinstance(action_state.get("policy_decision"), dict) else {}
+    dag = action_state.get("claim_dag_diff") if isinstance(action_state.get("claim_dag_diff"), dict) else {}
+    optimizer = action_state.get("optimizer_diff") if isinstance(action_state.get("optimizer_diff"), dict) else {}
+    next_actions = action_state.get("next_eligible_actions") if isinstance(action_state.get("next_eligible_actions"), list) else []
+    lines = [
+        "Closed-loop Scientific Action Execution",
+        f"- selected_action_id: {action_state.get('selected_action_id')}",
+        f"- status: {action_state.get('status')}",
+        f"- reason: {action_state.get('reason')}",
+    ]
+    if action:
+        lines.extend(
+            [
+                f"- action_type: {action.get('action_type')}",
+                f"- tool_id: {action.get('tool_id')}",
+                f"- expected_information_gain: {action.get('expected_information_gain')}",
+                f"- priority: {action.get('priority')}",
+                f"- rationale: {action.get('rationale')}",
+            ]
+        )
+    if policy:
+        lines.extend(
+            [
+                f"- policy: {policy.get('status')}",
+                f"- required_permissions: {policy.get('required_permissions')}",
+                f"- execution_mode: {policy.get('execution_mode')}",
+            ]
+        )
+    if result:
+        lines.extend(
+            [
+                f"- generated_artifacts: {result.get('generated_artifacts')}",
+                f"- verifier_count: {len(result.get('verifier_results') or [])}",
+                f"- errors: {result.get('errors')}",
+            ]
+        )
+    if dag:
+        lines.extend(
+            [
+                f"- claim_dag_checks_added: {dag.get('added_check_ids')}",
+                f"- claim_dag_blockers_added: {dag.get('added_blocker_ids')}",
+                f"- invalidated_claims: {dag.get('invalidated_claim_ids')}",
+            ]
+        )
+    if optimizer:
+        lines.extend(
+            [
+                f"- optimizer_completed_actions: {optimizer.get('completed_action_ids')}",
+                f"- optimizer_new_actions: {optimizer.get('new_action_ids')}",
+                f"- optimizer_downgraded_actions: {optimizer.get('downgraded_action_ids')}",
+            ]
+        )
+    if next_actions:
+        lines.append(f"- next_eligible_actions: {[item.get('action_id') for item in next_actions[:3] if isinstance(item, dict)]}")
+    lines.append("Agents must treat this as completed state, not as future work.")
+    return "\n".join(lines)
+
+
 def _tool_prompt_summary(tool_context: dict[str, object]) -> str:
     if not tool_context.get("enabled"):
         return str(tool_context.get("reason") or "none")
@@ -755,9 +987,32 @@ def _tool_prompt_summary(tool_context: dict[str, object]) -> str:
             _phase2_tool_summary(tool_context),
             _energy_decomposition_summary(tool_context),
             _optimizer_tool_summary(tool_context),
+            _closed_loop_prompt_summary(tool_context),
             "Citable artifact IDs: " + ", ".join(str(item) for item in artifact_ids),
         ]
     )
+    return "\n".join(lines)
+
+
+def _closed_loop_prompt_summary(tool_context: dict[str, object]) -> str:
+    state = tool_context.get("latest_closed_loop_action")
+    if not isinstance(state, dict):
+        return "Closed-loop action execution: no action has executed yet"
+    action = state.get("action") if isinstance(state.get("action"), dict) else {}
+    result = state.get("execution_result") if isinstance(state.get("execution_result"), dict) else {}
+    dag = state.get("claim_dag_diff") if isinstance(state.get("claim_dag_diff"), dict) else {}
+    optimizer = state.get("optimizer_diff") if isinstance(state.get("optimizer_diff"), dict) else {}
+    lines = [
+        "Closed-loop action execution:",
+        f"- selected_action_id: {state.get('selected_action_id')}",
+        f"- status: {state.get('status')}",
+        f"- tool_id: {action.get('tool_id') if action else None}",
+        f"- summary: {result.get('summary') if result else state.get('reason')}",
+        f"- generated_artifacts: {result.get('generated_artifacts') if result else []}",
+        f"- claim_dag_diff: checks={dag.get('added_check_ids') if dag else []}, blockers={dag.get('added_blocker_ids') if dag else []}, invalidated={dag.get('invalidated_claim_ids') if dag else []}",
+        f"- optimizer_diff: completed={optimizer.get('completed_action_ids') if optimizer else []}, new={optimizer.get('new_action_ids') if optimizer else []}",
+        "Hard rule: do not restate this selected action as something to do next; use its result to choose the next claim, equation, counterexample, or blocker.",
+    ]
     return "\n".join(lines)
 
 
@@ -1098,6 +1353,51 @@ def _write_meeting_artifacts(
     write_jsonl(root / "meeting_checkpoints.jsonl", checkpoints)
 
 
+def _clear_meeting_runtime_artifacts(root: Path) -> None:
+    for name in MEETING_ARTIFACTS:
+        target = root / name
+        if target.exists():
+            target.unlink()
+    for name in [
+        "action_executions",
+        "claim_dag.sqlite",
+        "claim_dag.json",
+        "formal_claim.json",
+        "atomic_claims.jsonl",
+        "claim_dependencies.jsonl",
+        "claim_checks.jsonl",
+        "claim_contradictions.jsonl",
+        "independent_checks.jsonl",
+        "validation_blockers.jsonl",
+        "total_gate_result.json",
+    ]:
+        target = root / name
+        if target.is_dir():
+            shutil.rmtree(target)
+        elif target.exists():
+            target.unlink()
+
+
+def _write_empty_closed_loop_state(root: Path, reason: str) -> None:
+    payload = {
+        "schema_version": "v28-closed-loop-state",
+        "run_id": root.name,
+        "selected_action_id": None,
+        "status": "not_started",
+        "reason": reason,
+        "action": None,
+        "policy_decision": None,
+        "execution_result": None,
+        "claim_dag_diff": None,
+        "optimizer_diff": None,
+        "next_eligible_actions": [],
+        "bundle_dir": None,
+        "created_at": datetime.now(UTC).isoformat(),
+    }
+    write_json(root / "closed_loop_action_state.json", payload)
+    write_jsonl(root / "closed_loop_action_executions.jsonl", [])
+
+
 def _write_science_progress_artifacts(root: Path, session: MeetingSession, messages: list[MeetingMessage], responses: list[MeetingAgentResponse], *, allow_deterministic_scaffold: bool) -> None:
     sketches = _candidate_model_sketches(session, messages, responses, allow_deterministic_scaffold=allow_deterministic_scaffold)
     tasks = _verifier_tasks(session, sketches, responses)
@@ -1436,13 +1736,18 @@ def _should_stop_no_progress(session: MeetingSession, round_number: int, root: P
         return False
     if round_number < 2:
         return False
-    tool_calls = read_jsonl(root / "meeting_tool_calls.jsonl") if (root / "meeting_tool_calls.jsonl").exists() else []
-    post_round_zero_tools = [
-        item for item in tool_calls
-        if str(item.get("tool_call_id", "")).startswith(f"tool-{session.meeting_id}-round")
+    action_rows = action_execution_rows(root)
+    if action_rows and action_rows[-1].get("status") == "no_eligible_action":
+        return True
+    recent_actions = action_rows[-2:]
+    recent_progress = [
+        item for item in recent_actions
+        if item.get("status") in {"succeeded", "inconclusive"} and item.get("claim_dag_diff")
     ]
+    if recent_progress:
+        return False
     repair_results = read_jsonl(root / "repair_results.jsonl") if (root / "repair_results.jsonl").exists() else []
-    return not post_round_zero_tools and not repair_results
+    return not repair_results
 
 
 def _live_credentials_available() -> bool:

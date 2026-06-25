@@ -399,6 +399,18 @@ def build_parser() -> argparse.ArgumentParser:
     benchmark_run.add_argument("--runs-dir", default="runs")
     benchmark_run.add_argument("--run-id", default=None)
     benchmark_run.add_argument("--force", action="store_true")
+
+    closed_loop_demo = subcommands.add_parser("run-closed-loop-demo", help="Run deterministic V2.8 closed-loop superconductivity action execution demo.")
+    closed_loop_demo.add_argument("--runs-dir", default="runs")
+    closed_loop_demo.add_argument("--run-id", default="v28-closed-loop-demo")
+    closed_loop_demo.add_argument("--question", default=(
+        "Determine whether the decomposition of superconducting condensation energy into bare kinetic-energy, "
+        "phonon-interaction-energy, and correlated-hopping-energy contributions is uniquely defined, gauge invariant, "
+        "and physically observable."
+    ))
+    closed_loop_demo.add_argument("--rounds", type=int, default=3)
+    closed_loop_demo.add_argument("--phase2-data", default="data/phase2_lsco.csv")
+    closed_loop_demo.add_argument("--force", action="store_true")
     return parser
 
 
@@ -1097,6 +1109,30 @@ def _benchmark_run(args: argparse.Namespace) -> int:
     return 0
 
 
+def _run_closed_loop_demo(args: argparse.Namespace) -> int:
+    from coscientist.live_agents import closed_loop_action_rows, run_live_agent_meeting, validate_meeting_artifacts
+
+    run_dir = Path(args.runs_dir) / args.run_id
+    output = run_live_agent_meeting(
+        run_dir,
+        args.question,
+        live_model=False,
+        max_rounds=args.rounds,
+        force=args.force,
+        phase2_data_path=args.phase2_data,
+    )
+    errors = validate_meeting_artifacts(output)
+    print(f"Closed-loop demo run: {Path(output).resolve()}")
+    for row in closed_loop_action_rows(output):
+        print(json.dumps(row, sort_keys=True))
+    print(f"Validation: {'valid' if not errors else 'has errors'}")
+    if errors:
+        for error in errors:
+            print(f"Error: {error}")
+        return 2
+    return 0
+
+
 def _load_optimizer_hypotheses(path: str | None) -> list[dict[str, object]]:
     if not path:
         return [
@@ -1272,6 +1308,8 @@ def main(argv: list[str] | None = None) -> int:
             return _failures_list(args)
         if args.command == "benchmark-run":
             return _benchmark_run(args)
+        if args.command == "run-closed-loop-demo":
+            return _run_closed_loop_demo(args)
     except (ValidationError, ValueError, ProviderError, CompletedRunError, NetworkDisabledError) as exc:
         print(f"Error: {exc}")
         return 2

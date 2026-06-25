@@ -868,10 +868,24 @@ PYTHONPATH=src python -m coscientist.cli benchmark-run \
 
 The Gradio workbench includes a `Domain Packs / Optimizer V2` tab. Live Agent Meeting also receives Optimizer V2 artifacts in its round-zero tool context, so agents are instructed to advance queued verifier/data/repair actions instead of restating generic future work.
 
+V2.8 adds closed-loop scientific action execution. In the Live Agent Room, one eligible Optimizer V2 action is selected at the start of each productive round, checked against policy and permissions, executed through the backend tool registry, attached to an auditable artifact bundle, used to update the Claim DAG, and injected into the next agent round.
+
+Run the deterministic superconductivity demo:
+
+```bash
+PYTHONPATH=src python -m coscientist.cli run-closed-loop-demo \
+  --runs-dir runs \
+  --run-id v28-closed-loop-demo \
+  --force
+```
+
+This demo remains offline by default and preserves the condensation-energy guardrail: component energy ledgers are model/representation dependent unless an observable mapping is established.
+
 See:
 
 - `docs/domain_pack_protocol.md`
 - `docs/hypothesis_optimizer_v2.md`
+- `docs/closed_loop_scientific_action_execution.md`
 - `docs/platform_generalization_and_optimizer_v2_plan.md`
 
 ## Testing

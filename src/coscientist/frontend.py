@@ -536,6 +536,16 @@ class OfflineDiscoveryFrontend:
 
         return meeting_tool_call_rows(run_dir)
 
+    def live_agent_action_rows(self, run_dir: str | Path) -> list[dict[str, object]]:
+        from coscientist.live_agents import closed_loop_action_rows
+
+        return closed_loop_action_rows(run_dir)
+
+    def live_agent_latest_action_state(self, run_dir: str | Path) -> dict[str, object]:
+        from coscientist.live_agents import closed_loop_latest_state
+
+        return closed_loop_latest_state(run_dir)
+
     def live_agent_bcs_verifier_rows(self, run_dir: str | Path) -> list[dict[str, object]]:
         from coscientist.live_agents import meeting_bcs_verifier_result_rows
 
@@ -862,10 +872,11 @@ MODEL_SKETCH_COLUMNS = ["model_id", "model_family", "status", "hamiltonian_terms
 MEETING_VERIFIER_TASK_COLUMNS = ["task_id", "model_id", "verifier_type", "status", "required_inputs", "required_outputs"]
 HELD_OUT_PREDICTION_COLUMNS = ["prediction_id", "model_id", "observable", "material_family", "doping_or_parameter", "status"]
 MEETING_TOOL_CALL_COLUMNS = ["tool_call_id", "tool_name", "status", "artifact_dir", "summary"]
+ACTION_EXECUTION_COLUMNS = ["selected_action_id", "tool_id", "status", "expected_information_gain", "priority", "policy_status", "execution_mode", "duration_ms", "generated_artifacts", "verifier_count", "claim_dag_checks", "claim_dag_blockers", "optimizer_new_actions", "bundle_dir"]
 DOMAIN_PACK_COLUMNS = ["domain_id", "version", "task_types", "tool_count", "benchmark_count", "guardrails"]
 OPTIMIZER_PORTFOLIO_COLUMNS = ["hypothesis_id", "role", "rationale", "pareto_frontier"]
 FAILURE_MEMORY_COLUMNS = ["failure_id", "hypothesis_id", "domain_id", "failure_mode", "lesson"]
-INFORMATION_GAIN_COLUMNS = ["action_id", "hypothesis_id", "action_type", "expected_information_gain", "success_probability", "feasibility", "cost", "priority", "rationale"]
+INFORMATION_GAIN_COLUMNS = ["action_id", "hypothesis_id", "domain_id", "action_type", "tool_id", "expected_information_gain", "success_probability", "feasibility", "cost", "priority", "execution_status", "rationale"]
 
 
 def _table(records: list[dict[str, object]], columns: list[str]) -> list[list[object]]:
@@ -1042,6 +1053,8 @@ def create_gradio_workbench(*, runs_dir: str | Path = "runs"):
                 final_status,
                 service.live_agent_tool_context(target),
                 _table(service.live_agent_tool_call_rows(target), MEETING_TOOL_CALL_COLUMNS),
+                service.live_agent_latest_action_state(target),
+                _table(service.live_agent_action_rows(target), ACTION_EXECUTION_COLUMNS),
                 _table(service.live_agent_bcs_verifier_rows(target), MINIMAL_BCS_VERIFIER_RESULT_COLUMNS),
                 _table(service.live_agent_phase2_observation_rows(target), PHASE2_OBSERVATION_COLUMNS),
                 _table(service.live_agent_phase2_missing_rows(target), PHASE2_MISSING_COLUMNS),
@@ -1061,6 +1074,8 @@ def create_gradio_workbench(*, runs_dir: str | Path = "runs"):
             final_status,
             service.live_agent_tool_context(target),
             _table(service.live_agent_tool_call_rows(target), MEETING_TOOL_CALL_COLUMNS),
+            service.live_agent_latest_action_state(target),
+            _table(service.live_agent_action_rows(target), ACTION_EXECUTION_COLUMNS),
             _table(service.live_agent_bcs_verifier_rows(target), MINIMAL_BCS_VERIFIER_RESULT_COLUMNS),
             _table(service.live_agent_phase2_observation_rows(target), PHASE2_OBSERVATION_COLUMNS),
             _table(service.live_agent_phase2_missing_rows(target), PHASE2_MISSING_COLUMNS),
@@ -1272,6 +1287,8 @@ def create_gradio_workbench(*, runs_dir: str | Path = "runs"):
             meeting_status = gr.JSON(label="Meeting status")
             meeting_tool_context = gr.JSON(label="Executed tool context")
             meeting_tool_calls = gr.Dataframe(headers=MEETING_TOOL_CALL_COLUMNS, label="Meeting tool calls")
+            meeting_action_state = gr.JSON(label="Closed-loop action state")
+            meeting_actions = gr.Dataframe(headers=ACTION_EXECUTION_COLUMNS, label="Closed-loop action executions")
             meeting_bcs_verifiers = gr.Dataframe(headers=MINIMAL_BCS_VERIFIER_RESULT_COLUMNS, label="BCS executable verifier results")
             meeting_phase2_observations = gr.Dataframe(headers=PHASE2_OBSERVATION_COLUMNS, label="Phase 2 imported observations")
             meeting_phase2_missing = gr.Dataframe(headers=PHASE2_MISSING_COLUMNS, label="Phase 2 missing observables")
@@ -1355,6 +1372,8 @@ def create_gradio_workbench(*, runs_dir: str | Path = "runs"):
                 meeting_status,
                 meeting_tool_context,
                 meeting_tool_calls,
+                meeting_action_state,
+                meeting_actions,
                 meeting_bcs_verifiers,
                 meeting_phase2_observations,
                 meeting_phase2_missing,

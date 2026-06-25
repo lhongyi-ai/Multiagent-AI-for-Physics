@@ -45,6 +45,9 @@ class SuperconductivityLscoPack:
             ToolDescriptor(tool_id="phase1_minimal_mixed_bcs_solver", name="Minimal mixed BCS solver", purpose="Theory scan and energy ledger."),
             ToolDescriptor(tool_id="phase2_lsco_acquisition", name="LSCO Phase 2 acquisition", purpose="Search, extraction staging, review, readiness."),
             ToolDescriptor(tool_id="phase2_data_coverage_tool", name="LSCO coverage tool", purpose="Coverage and readiness analysis."),
+            ToolDescriptor(tool_id="energy_decomposition_audit_tool", name="Condensation-energy decomposition audit", purpose="Gauge, representation, counterexample, and observable-classification guardrails."),
+            ToolDescriptor(tool_id="representation_counterexample", name="Representation counterexample", purpose="Show whether component energy partitions are invariant under equivalent decompositions."),
+            ToolDescriptor(tool_id="hellmann_feynman_diagnostic", name="Hellmann-Feynman diagnostics", purpose="Operational coupling derivatives under a fixed microscopic convention."),
         ]
 
     def benchmark_cases(self) -> list[BenchmarkCase]:

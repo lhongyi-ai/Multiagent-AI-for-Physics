@@ -63,13 +63,26 @@ class ExpectedInformationGainAction(BaseModel):
     schema_version: str = "v26-eig-action"
     action_id: str
     hypothesis_id: str
+    domain_id: str = "general"
     action_type: str
+    tool_id: str | None = None
+    arguments: dict[str, Any] = Field(default_factory=dict)
     expected_information_gain: float = Field(ge=0.0, le=1.0)
     success_probability: float = Field(ge=0.0, le=1.0)
     feasibility: float = Field(ge=0.0, le=1.0)
     cost: float = Field(gt=0.0)
     priority: float
     rationale: str
+    required_permissions: list[str] = Field(default_factory=list)
+    expected_artifact_types: list[str] = Field(default_factory=list)
+    target_claims: list[str] = Field(default_factory=list)
+    blockers: list[str] = Field(default_factory=list)
+    execution_status: str = "queued"
+    retry_count: int = 0
+    provenance: list[str] = Field(default_factory=list)
+    created_at: str = Field(default_factory=lambda: datetime.now(UTC).isoformat())
+    executed_at: str | None = None
+    idempotency_key: str = ""
 
 
 class FailureMemoryRecord(BaseModel):
@@ -282,18 +295,58 @@ def build_information_gain_actions(hypotheses: list[HypothesisV2], kills: list[C
         probability = max(_score(hypothesis, "falsifiability"), 0.1)
         cost = 1.0 + len(hypothesis.required_tools) * 0.25
         priority = eig * probability * feasibility / cost
+        tool_id = hypothesis.required_tools[0] if hypothesis.required_tools else "targeted_repair_task"
+        action_id = f"eig-{_digest(hypothesis.hypothesis_id)}"
         actions.append(ExpectedInformationGainAction(
-            action_id=f"eig-{_digest(hypothesis.hypothesis_id)}",
+            action_id=action_id,
             hypothesis_id=hypothesis.hypothesis_id,
-            action_type="run_targeted_verifier_or_data_query",
+            domain_id=hypothesis.domain_id,
+            action_type=_action_type_for_tool(tool_id),
+            tool_id=tool_id,
+            arguments={"hypothesis_id": hypothesis.hypothesis_id, "scoped_claim": hypothesis.scoped_claim},
             expected_information_gain=eig,
             success_probability=probability,
             feasibility=feasibility,
             cost=cost,
             priority=round(priority, 6),
             rationale="Prioritize actions that can falsify or materially separate active hypotheses.",
+            required_permissions=_permissions_for_tool(tool_id),
+            expected_artifact_types=_artifact_types_for_tool(tool_id),
+            target_claims=[f"claim-{hypothesis.hypothesis_id}"],
+            blockers=list(hypothesis.contradiction_artifact_ids),
+            provenance=["hypothesis_optimizer_v2"],
+            idempotency_key=_digest(f"{hypothesis.domain_id}:{hypothesis.hypothesis_id}:{tool_id}:{hypothesis.scoped_claim}"),
         ))
     return sorted(actions, key=lambda item: item.priority, reverse=True)
+
+
+def _action_type_for_tool(tool_id: str) -> str:
+    mapping = {
+        "phase1_minimal_mixed_bcs_solver": "run_phase1_mixed_bcs_solver",
+        "phase2_data_coverage_tool": "run_phase2_readiness_evaluation",
+        "phase2_lsco_acquisition": "run_local_data_coverage_query",
+        "energy_decomposition_audit_tool": "run_condensation_energy_decomposition_audit",
+        "energy_decomposition_audit": "run_condensation_energy_decomposition_audit",
+    }
+    return mapping.get(tool_id, "run_targeted_verifier_or_data_query")
+
+
+def _permissions_for_tool(tool_id: str) -> list[str]:
+    if "live" in tool_id or "acquisition" in tool_id:
+        return ["live_network"] if tool_id.endswith("_live") else []
+    return []
+
+
+def _artifact_types_for_tool(tool_id: str) -> list[str]:
+    mapping = {
+        "phase1_minimal_mixed_bcs_solver": ["hamiltonian", "solution", "verifier_results", "phase_scan"],
+        "phase2_data_coverage_tool": ["coverage", "readiness", "missing_observables"],
+        "phase2_lsco_acquisition": ["candidate_rows", "readiness"],
+        "energy_decomposition_audit_tool": ["gauge_coupled_hamiltonian", "counterexample", "hellmann_feynman", "verifier_results"],
+        "energy_decomposition_audit": ["gauge_coupled_hamiltonian", "counterexample", "hellmann_feynman", "verifier_results"],
+        "targeted_repair_task": ["repair_task"],
+    }
+    return mapping.get(tool_id, ["execution_result"])
 
 
 def run_optimizer_v2(hypotheses: list[Any], *, run_dir: str | Path, domain_id: str = "general", run_id: str = "optimizer-v2") -> OptimizerV2Result:
