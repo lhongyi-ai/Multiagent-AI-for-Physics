@@ -45,6 +45,11 @@ class MeetingAgentResponse(BaseModel):
     agent_id: str
     role: AgentRoleV23
     concise_message: str
+    candidate_model_ids: list[str] = Field(default_factory=list)
+    proposed_hamiltonian_terms: list[str] = Field(default_factory=list)
+    proposed_verifier_tasks: list[str] = Field(default_factory=list)
+    proposed_held_out_predictions: list[str] = Field(default_factory=list)
+    unresolved_derivation_gaps: list[str] = Field(default_factory=list)
     cited_artifact_ids: list[str] = Field(default_factory=list)
     objections: list[str] = Field(default_factory=list)
     proposed_repairs: list[str] = Field(default_factory=list)
@@ -59,7 +64,7 @@ class MeetingSession(BaseModel):
     research_question: str
     current_round: int = Field(default=0, ge=0)
     max_rounds: int = Field(default=2, ge=1, le=8)
-    status: Literal["fixture", "live", "live_connection_blocked", "failed", "completed"] = "fixture"
+    status: Literal["fixture", "live", "live_connection_blocked", "failed", "completed", "stopped_no_progress"] = "fixture"
     stopping_reason: str | None = None
     created_at: datetime
     updated_at: datetime
@@ -124,6 +129,88 @@ class ClaimRepairResult(BaseModel):
     changed_fields: list[str]
     invalidated_claim_ids: list[str]
     outcome: Literal["accepted", "rejected_no_op", "blocked"]
+    created_at: datetime
+
+
+class CandidateModelSketch(BaseModel):
+    model_config = ConfigDict(extra="forbid", strict=True, protected_namespaces=())
+
+    schema_version: str = "v23"
+    model_id: str
+    meeting_id: str
+    source_message_ids: list[str]
+    model_family: str
+    hamiltonian_terms: list[str]
+    energy_decomposition_targets: list[str]
+    assumptions: list[str]
+    derivation_gaps: list[str]
+    status: Literal["sketch_only", "ready_for_verifier", "invalid"] = "sketch_only"
+
+
+class VerifierTaskSpec(BaseModel):
+    model_config = ConfigDict(extra="forbid", strict=True, protected_namespaces=())
+
+    schema_version: str = "v23"
+    task_id: str
+    meeting_id: str
+    model_id: str
+    verifier_type: Literal[
+        "microscopic_hamiltonian_audit",
+        "mean_field_derivation",
+        "free_energy_closure",
+        "current_operator_consistency",
+        "optical_sum_rule",
+        "held_out_prediction_gate",
+        "competitor_model_check",
+        "data_coverage_audit",
+        "peierls_gauge_coupling",
+        "continuity_equation",
+        "optical_sum_rule_gauge_check",
+        "representation_counterexample",
+        "exact_diagonalization_counterexample",
+        "hellmann_feynman_diagnostic",
+        "observable_classification",
+        "invariant_theorem_obligation",
+    ]
+    required_inputs: list[str]
+    required_outputs: list[str]
+    blocking: bool = True
+    status: Literal["queued", "blocked_missing_input", "complete"] = "queued"
+
+
+class HeldOutPredictionSpec(BaseModel):
+    model_config = ConfigDict(extra="forbid", strict=True, protected_namespaces=())
+
+    schema_version: str = "v23"
+    prediction_id: str
+    meeting_id: str
+    model_id: str
+    observable: str
+    material_family: str
+    doping_or_parameter: str
+    prediction_statement: str
+    preregistered_before_data: bool = True
+    status: Literal["placeholder_requires_model", "preregistered", "revealed"] = "placeholder_requires_model"
+
+
+class ScienceProgressDiagnostic(BaseModel):
+    model_config = ConfigDict(extra="forbid", strict=True, protected_namespaces=())
+
+    schema_version: str = "v23"
+    meeting_id: str
+    outcome: Literal[
+        "no_new_scientific_knowledge",
+        "candidate_requires_verification",
+        "ready_for_frozen_campaign",
+        "insufficient_agent_output",
+    ]
+    repetition_score: float = Field(ge=0.0, le=1.0)
+    valid_model_sketch_count: int = Field(ge=0)
+    verifier_task_count: int = Field(ge=0)
+    held_out_prediction_count: int = Field(ge=0)
+    failure_modes: list[str]
+    required_next_artifacts: list[str]
+    concise_assessment: str
     created_at: datetime
 
 

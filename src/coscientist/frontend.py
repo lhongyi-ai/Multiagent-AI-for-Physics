@@ -179,7 +179,7 @@ class OfflineDiscoveryFrontend:
 
     def report_text(self, run_dir: str | Path) -> str:
         path = Path(run_dir)
-        for name in ["superconductivity_report.md", "atomic_discovery_report.md", "discovery_report.md", "report.md"]:
+        for name in ["minimal_bcs_report.md", "superconductivity_report.md", "atomic_discovery_report.md", "discovery_report.md", "report.md"]:
             candidate = path / name
             if candidate.exists():
                 return candidate.read_text(encoding="utf-8")
@@ -277,6 +277,141 @@ class OfflineDiscoveryFrontend:
         path = Path(run_dir) / "material_mapping.jsonl"
         return read_jsonl(path) if path.exists() else []
 
+    def run_minimal_bcs(self, project_path: str | Path | None = None, *, run_id: str = "minimal-mixed-bcs", force: bool = True) -> str:
+        from coscientist.superconductivity import run_minimal_mixed_bcs_project
+
+        project = project_path if project_path and str(project_path).strip() else None
+        run_dir = run_minimal_mixed_bcs_project(project, runs_dir=self.runs_dir, run_id=run_id or "minimal-mixed-bcs", force=force)
+        return str(run_dir)
+
+    def validate_minimal_bcs(self, run_dir: str | Path) -> list[str]:
+        from coscientist.superconductivity import validate_minimal_mixed_bcs_run
+
+        return validate_minimal_mixed_bcs_run(run_dir)
+
+    def minimal_bcs_hamiltonian(self, run_dir: str | Path) -> dict[str, object]:
+        path = Path(run_dir) / "hamiltonian_spec.json"
+        return read_json(path) if path.exists() else {}
+
+    def minimal_bcs_solution_method(self, run_dir: str | Path) -> dict[str, object]:
+        path = Path(run_dir) / "solution_method.json"
+        return read_json(path) if path.exists() else {}
+
+    def minimal_bcs_base_solution(self, run_dir: str | Path) -> dict[str, object]:
+        path = Path(run_dir) / "base_solution.json"
+        return read_json(path) if path.exists() else {}
+
+    def minimal_bcs_energy_ledger(self, run_dir: str | Path) -> dict[str, object]:
+        path = Path(run_dir) / "energy_ledger.json"
+        return read_json(path) if path.exists() else {}
+
+    def minimal_bcs_phase_summary(self, run_dir: str | Path) -> dict[str, object]:
+        path = Path(run_dir) / "phase_diagram_summary.json"
+        return read_json(path) if path.exists() else {}
+
+    def minimal_bcs_comparison_rows(self, run_dir: str | Path) -> list[dict[str, object]]:
+        path = Path(run_dir) / "four_model_comparison.jsonl"
+        return read_jsonl(path) if path.exists() else []
+
+    def minimal_bcs_phase_rows(self, run_dir: str | Path) -> list[dict[str, object]]:
+        path = Path(run_dir) / "phase_diagram_points.jsonl"
+        return read_jsonl(path) if path.exists() else []
+
+    def minimal_bcs_verifier_task_rows(self, run_dir: str | Path) -> list[dict[str, object]]:
+        path = Path(run_dir) / "minimal_bcs_verifier_tasks.jsonl"
+        return read_jsonl(path) if path.exists() else []
+
+    def minimal_bcs_verifier_result_rows(self, run_dir: str | Path) -> list[dict[str, object]]:
+        path = Path(run_dir) / "minimal_bcs_verifier_results.jsonl"
+        return read_jsonl(path) if path.exists() else []
+
+    def phase2_observation_rows(self, run_dir: str | Path) -> list[dict[str, object]]:
+        path = Path(run_dir) / "phase2_existing_data_observables.jsonl"
+        return read_jsonl(path) if path.exists() else []
+
+    def phase2_fit_rows(self, run_dir: str | Path) -> list[dict[str, object]]:
+        path = Path(run_dir) / "phase2_model_fit_results.jsonl"
+        return read_jsonl(path) if path.exists() else []
+
+    def phase2_evaluation(self, run_dir: str | Path) -> dict[str, object]:
+        path = Path(run_dir) / "phase2_held_out_evaluation.json"
+        return read_json(path) if path.exists() else {}
+
+    def phase2_connection_plan(self, run_dir: str | Path) -> str:
+        path = Path(run_dir) / "phase2_database_connection_plan.md"
+        return path.read_text(encoding="utf-8") if path.exists() else ""
+
+    def run_phase2_acquisition(
+        self,
+        *,
+        mode: str = "fixture",
+        run_id: str = "phase2-lsco-acquisition",
+        canonical_dataset: str | Path = "data/phase2_lsco.csv",
+        live_network: bool = False,
+        auto_promote: bool = False,
+        max_queries: int = 8,
+        max_results_per_query: int = 5,
+    ) -> str:
+        from coscientist.superconductivity import run_phase2_acquisition
+
+        output = run_phase2_acquisition(
+            mode=mode,  # type: ignore[arg-type]
+            live_network=live_network,
+            runs_dir=self.runs_dir,
+            run_id=run_id,
+            canonical_dataset=canonical_dataset,
+            auto_promote=auto_promote,
+            max_queries=max_queries,
+            max_results_per_query=max_results_per_query,
+        )
+        return str(output)
+
+    def validate_phase2_acquisition(self, run_dir: str | Path) -> list[str]:
+        from coscientist.superconductivity import validate_phase2_acquisition_run
+
+        return validate_phase2_acquisition_run(run_dir)
+
+    def phase2_acquisition_status(self, run_dir: str | Path) -> dict[str, object]:
+        from coscientist.superconductivity import phase2_acquisition_summary
+
+        return phase2_acquisition_summary(run_dir)
+
+    def phase2_acquisition_candidate_sources(self, run_dir: str | Path) -> list[dict[str, object]]:
+        from coscientist.superconductivity import phase2_candidate_sources
+
+        return phase2_candidate_sources(run_dir)
+
+    def phase2_acquisition_imported_rows(self, run_dir: str | Path) -> list[dict[str, object]]:
+        from coscientist.superconductivity import phase2_candidate_rows
+
+        return phase2_candidate_rows(run_dir)
+
+    def phase2_acquisition_data_gaps(self, run_dir: str | Path) -> list[dict[str, object]]:
+        from coscientist.superconductivity import phase2_acquisition_gaps
+
+        return phase2_acquisition_gaps(run_dir)
+
+    def phase2_acquisition_digitization_queue(self, run_dir: str | Path) -> list[dict[str, object]]:
+        from coscientist.superconductivity import phase2_digitization_queue
+
+        return phase2_digitization_queue(run_dir)
+
+    def phase2_acquisition_readiness(self, run_dir: str | Path) -> dict[str, object]:
+        from coscientist.superconductivity import phase2_readiness
+
+        return phase2_readiness(run_dir)
+
+    def phase2_review_candidate_row(self, run_dir: str | Path, *, candidate_row_id: str, decision: str, rationale: str = "", reviewer: str = "local-human") -> str:
+        from coscientist.superconductivity import CandidateReviewDecision, review_candidate_rows
+
+        output = review_candidate_rows(run_dir, [CandidateReviewDecision(candidate_row_id=candidate_row_id, decision=decision, rationale=rationale, reviewer=reviewer)])  # type: ignore[arg-type]
+        return str(output)
+
+    def phase2_promote_reviewed_rows(self, run_dir: str | Path, *, canonical_dataset: str | Path = "data/phase2_lsco.csv") -> str:
+        from coscientist.superconductivity import promote_reviewed_candidates
+
+        return str(promote_reviewed_candidates(run_dir, canonical_dataset))
+
     def run_v22_fixture(self, project_path: str | Path, *, run_id: str = "v22-superconductivity-workbench", force: bool = True) -> str:
         from coscientist.superconductivity import run_v22_campaign
 
@@ -341,15 +476,15 @@ class OfflineDiscoveryFrontend:
         path = Path(run_dir) / "claim_dag.sqlite"
         return query_claim_dag_database(run_dir, "total_gate_results", limit=20) if path.exists() else []
 
-    def run_live_agent_meeting(self, run_dir: str | Path, question: str, *, live_model: bool = False, max_rounds: int = 2, force: bool = True) -> str:
+    def run_live_agent_meeting(self, run_dir: str | Path, question: str, *, live_model: bool = False, max_rounds: int = 2, force: bool = True, phase2_data_path: str | Path | None = None) -> str:
         from coscientist.live_agents import run_live_agent_meeting
 
-        return str(run_live_agent_meeting(run_dir, question, live_model=live_model, max_rounds=max_rounds, force=force))
+        return str(run_live_agent_meeting(run_dir, question, live_model=live_model, max_rounds=max_rounds, force=force, phase2_data_path=phase2_data_path))
 
-    def stream_live_agent_meeting(self, run_dir: str | Path, question: str, *, live_model: bool = False, max_rounds: int = 2, force: bool = True):
+    def stream_live_agent_meeting(self, run_dir: str | Path, question: str, *, live_model: bool = False, max_rounds: int = 2, force: bool = True, phase2_data_path: str | Path | None = None):
         from coscientist.live_agents import stream_live_agent_meeting
 
-        yield from stream_live_agent_meeting(run_dir, question, live_model=live_model, max_rounds=max_rounds, force=force)
+        yield from stream_live_agent_meeting(run_dir, question, live_model=live_model, max_rounds=max_rounds, force=force, phase2_data_path=phase2_data_path)
 
     def validate_live_agent_meeting(self, run_dir: str | Path) -> list[str]:
         from coscientist.live_agents import validate_meeting_artifacts
@@ -371,6 +506,113 @@ class OfflineDiscoveryFrontend:
 
         return meeting_transcript(run_dir)
 
+    def science_progress_diagnostic(self, run_dir: str | Path) -> dict[str, object]:
+        from coscientist.live_agents import science_progress_diagnostic
+
+        return science_progress_diagnostic(run_dir)
+
+    def candidate_model_sketch_rows(self, run_dir: str | Path) -> list[dict[str, object]]:
+        from coscientist.live_agents import candidate_model_sketch_rows
+
+        return candidate_model_sketch_rows(run_dir)
+
+    def verifier_task_rows(self, run_dir: str | Path) -> list[dict[str, object]]:
+        from coscientist.live_agents import verifier_task_rows
+
+        return verifier_task_rows(run_dir)
+
+    def held_out_prediction_rows(self, run_dir: str | Path) -> list[dict[str, object]]:
+        from coscientist.live_agents import held_out_prediction_rows
+
+        return held_out_prediction_rows(run_dir)
+
+    def live_agent_tool_context(self, run_dir: str | Path) -> dict[str, object]:
+        from coscientist.live_agents import meeting_tool_context
+
+        return meeting_tool_context(run_dir)
+
+    def live_agent_tool_call_rows(self, run_dir: str | Path) -> list[dict[str, object]]:
+        from coscientist.live_agents import meeting_tool_call_rows
+
+        return meeting_tool_call_rows(run_dir)
+
+    def live_agent_action_rows(self, run_dir: str | Path) -> list[dict[str, object]]:
+        from coscientist.live_agents import closed_loop_action_rows
+
+        return closed_loop_action_rows(run_dir)
+
+    def live_agent_latest_action_state(self, run_dir: str | Path) -> dict[str, object]:
+        from coscientist.live_agents import closed_loop_latest_state
+
+        return closed_loop_latest_state(run_dir)
+
+    def run_v3_proof_search_demo(self, *, run_id: str = "v3-proof-search-demo", force: bool = True) -> str:
+        from coscientist.core.proof_search import run_v3_proof_search_demo
+
+        return str(run_v3_proof_search_demo(runs_dir=self.runs_dir, run_id=run_id, force=force))
+
+    def validate_v3_proof_search(self, run_dir: str | Path) -> list[str]:
+        from coscientist.core.proof_search import validate_v3_proof_search_run
+
+        return validate_v3_proof_search_run(run_dir)
+
+    def v3_snapshot_rows(self, run_dir: str | Path) -> list[dict[str, object]]:
+        path = Path(run_dir) / "scientific_state_snapshots.jsonl"
+        return read_jsonl(path) if path.exists() else []
+
+    def v3_obligation_rows(self, run_dir: str | Path) -> list[dict[str, object]]:
+        path = Path(run_dir) / "proof_obligations.jsonl"
+        return read_jsonl(path) if path.exists() else []
+
+    def v3_claim_transition_rows(self, run_dir: str | Path) -> list[dict[str, object]]:
+        path = Path(run_dir) / "claim_transition_records.jsonl"
+        return read_jsonl(path) if path.exists() else []
+
+    def v3_certificate_rows(self, run_dir: str | Path) -> list[dict[str, object]]:
+        path = Path(run_dir) / "certificates.jsonl"
+        return read_jsonl(path) if path.exists() else []
+
+    def v3_tool_gap_rows(self, run_dir: str | Path) -> list[dict[str, object]]:
+        path = Path(run_dir) / "tool_gaps.jsonl"
+        return read_jsonl(path) if path.exists() else []
+
+    def v3_tool_build_rows(self, run_dir: str | Path) -> list[dict[str, object]]:
+        path = Path(run_dir) / "tool_build_records.jsonl"
+        return read_jsonl(path) if path.exists() else []
+
+    def v3_candidate_archive_rows(self, run_dir: str | Path) -> list[dict[str, object]]:
+        path = Path(run_dir) / "candidate_archive.jsonl"
+        return read_jsonl(path) if path.exists() else []
+
+    def v3_state_dispute_rows(self, run_dir: str | Path) -> list[dict[str, object]]:
+        path = Path(run_dir) / "state_disputes.jsonl"
+        return read_jsonl(path) if path.exists() else []
+
+    def v3_independent_verification_rows(self, run_dir: str | Path) -> list[dict[str, object]]:
+        path = Path(run_dir) / "independent_verification_results.jsonl"
+        return read_jsonl(path) if path.exists() else []
+
+    def v3_final_adjudication(self, run_dir: str | Path) -> dict[str, object]:
+        path = Path(run_dir) / "final_adjudication.json"
+        return read_json(path) if path.exists() else {}
+
+    def live_agent_bcs_verifier_rows(self, run_dir: str | Path) -> list[dict[str, object]]:
+        from coscientist.live_agents import meeting_bcs_verifier_result_rows
+
+        return meeting_bcs_verifier_result_rows(run_dir)
+
+    def live_agent_phase2_observation_rows(self, run_dir: str | Path) -> list[dict[str, object]]:
+        path = Path(run_dir) / "phase2_data_coverage_tool" / "phase2_imported_observations.jsonl"
+        return read_jsonl(path) if path.exists() else []
+
+    def live_agent_phase2_missing_rows(self, run_dir: str | Path) -> list[dict[str, object]]:
+        path = Path(run_dir) / "phase2_data_coverage_tool" / "phase2_missing_observables.jsonl"
+        return read_jsonl(path) if path.exists() else []
+
+    def live_agent_phase2_candidate_source_rows(self, run_dir: str | Path) -> list[dict[str, object]]:
+        path = Path(run_dir) / "phase2_data_coverage_tool" / "phase2_candidate_data_sources.jsonl"
+        return read_jsonl(path) if path.exists() else []
+
     def run_targeted_repair(self, run_dir: str | Path, *, claim_id: str = "", reason: str = "") -> dict[str, object]:
         from coscientist.live_agents import targeted_repair_from_claim_dag
 
@@ -380,6 +622,62 @@ class OfflineDiscoveryFrontend:
         from coscientist.live_agents import claim_dag_mermaid
 
         return claim_dag_mermaid(run_dir)
+
+    def domain_pack_rows(self) -> list[dict[str, object]]:
+        from coscientist.core import get_default_domain_registry
+
+        return [item.__dict__ for item in get_default_domain_registry().list()]
+
+    def domain_pack_inspect(self, domain_id: str) -> dict[str, object]:
+        from coscientist.core import get_default_domain_registry
+
+        pack = get_default_domain_registry().get(domain_id)
+        return {
+            "domain_id": pack.domain_id,
+            "version": pack.version,
+            "supported_task_types": sorted(item.value for item in pack.supported_task_types()),
+            "tools": [item.model_dump(mode="json") for item in pack.tools()],
+            "benchmark_cases": [item.model_dump(mode="json") for item in pack.benchmark_cases()],
+            "readiness_gates": [item.model_dump(mode="json") for item in pack.readiness_gates()],
+            "guardrails": pack.guardrails(),
+        }
+
+    def run_generic_acquisition(self, *, domain_id: str, question: str = "", task_type: str = "data_extraction", mode: str = "fixture", run_id: str = "", live_network: bool = False, force: bool = True) -> str:
+        from coscientist.core import GenericDataAcquisitionAgent
+
+        result = GenericDataAcquisitionAgent().run(
+            domain_id=domain_id,
+            question=question,
+            task_type=task_type,
+            mode=mode,
+            runs_dir=self.runs_dir,
+            run_id=run_id or f"generic-acquisition-{domain_id}",
+            live_network=live_network,
+            force=force,
+        )
+        return result.run_dir
+
+    def run_hypothesis_optimizer_v2(self, *, domain_id: str = "general", run_id: str = "optimizer-v2", force: bool = True) -> str:
+        from coscientist.core import run_optimizer_v2
+
+        run_dir = Path(self.runs_dir) / (run_id or "optimizer-v2")
+        if force and run_dir.exists():
+            # Existing project convention allows overwrite through tool outputs; files are overwritten in place.
+            pass
+        run_optimizer_v2(_frontend_optimizer_fixture(), run_dir=run_dir, domain_id=domain_id, run_id=run_id or "optimizer-v2")
+        return str(run_dir)
+
+    def hypothesis_optimizer_portfolio_rows(self, run_dir: str | Path) -> list[dict[str, object]]:
+        path = Path(run_dir) / "hypothesis_portfolio_v2.jsonl"
+        return read_jsonl(path) if path.exists() else []
+
+    def failure_memory_rows(self, run_dir: str | Path) -> list[dict[str, object]]:
+        path = Path(run_dir) / "failure_memory.jsonl"
+        return read_jsonl(path) if path.exists() else []
+
+    def information_gain_rows(self, run_dir: str | Path) -> list[dict[str, object]]:
+        path = Path(run_dir) / "information_gain_queue.jsonl"
+        return read_jsonl(path) if path.exists() else []
 
 
 def create_app(*, runs_dir: str | Path = "runs") -> OfflineDiscoveryFrontend:
@@ -604,11 +902,40 @@ SC_ENERGY_COLUMNS = ["model_id", "delta_kinetic_ev", "delta_interaction_ev", "de
 SC_OPTICAL_COLUMNS = ["model_id", "full_sum", "delta_sum", "partial_sum_by_cutoff", "interpretation_warnings"]
 SC_MATERIAL_COLUMNS = ["material_id", "formula", "family", "tc_k", "doping_label", "mapping_uncertainty", "unsupported_fields"]
 SC_IDENTIFIABILITY_COLUMNS = ["group_id", "model_ids", "status", "observables_compared", "required_precision", "discriminating_observable"]
+MINIMAL_BCS_COMPARISON_COLUMNS = ["model_id", "gap_ev", "stable_superconducting_solution", "delta_kinetic_ev", "delta_phonon_interaction_ev", "delta_correlated_hopping_ev", "free_energy_change_ev", "isotope_exponent"]
+MINIMAL_BCS_PHASE_COLUMNS = ["model_id", "filling", "g_ev", "delta_t_ev", "gap_ev", "stable_superconducting_solution", "delta_kinetic_ev", "delta_phonon_interaction_ev", "delta_correlated_hopping_ev", "free_energy_change_ev"]
+MINIMAL_BCS_VERIFIER_TASK_COLUMNS = ["task_id", "verifier_id", "stage", "required_inputs", "required_outputs", "status"]
+MINIMAL_BCS_VERIFIER_RESULT_COLUMNS = ["verifier_id", "model_id", "stage", "verdict", "score", "checks_passed", "checks_failed"]
+PHASE2_OBSERVATION_COLUMNS = ["observation_id", "material_family", "material_id", "doping", "observable", "value", "unit", "split", "source_id", "usable_for_fit"]
+PHASE2_FIT_COLUMNS = ["model_id", "fit_status", "train_loss", "held_out_loss", "parameters", "rationale"]
+PHASE2_MISSING_COLUMNS = ["material_family", "material_id", "doping", "missing_observables", "observed_observables", "reason"]
+PHASE2_SOURCE_COLUMNS = ["source_kind", "status", "can_help_with", "cannot_supply_alone"]
+PHASE2_ACQ_SOURCE_COLUMNS = ["paper_id", "title", "year", "doi", "arxiv_id", "source_connectors", "retrieval_status"]
+PHASE2_ACQ_ROW_COLUMNS = ["candidate_row_id", "doping", "observable", "value", "unit", "confidence", "status", "review_status", "source_id"]
+PHASE2_DIGITIZATION_COLUMNS = ["digitization_task_id", "paper_id", "figure_id", "panel_id", "observable", "status", "y_axis_name", "required_doping_points"]
 CLAIM_DAG_NODE_COLUMNS = ["claim_id", "candidate_id", "parent_claim_id", "claim_type", "statement", "load_bearing", "uncertainty", "repairable"]
 CLAIM_DAG_EDGE_COLUMNS = ["edge_id", "parent_claim_id", "child_claim_id", "dependency_type", "load_bearing_path"]
 CLAIM_DAG_GATE_COLUMNS = ["candidate_id", "terminal_status", "selected_rule", "blocker_ids_json"]
 MEETING_MESSAGE_COLUMNS = ["round_number", "agent_id", "role", "critic_influenced", "content"]
 PROVIDER_CALL_COLUMNS = ["call_id", "agent_id", "provider", "model", "permission_mode", "parsing_result", "input_tokens", "output_tokens"]
+MODEL_SKETCH_COLUMNS = ["model_id", "model_family", "status", "hamiltonian_terms", "derivation_gaps"]
+MEETING_VERIFIER_TASK_COLUMNS = ["task_id", "model_id", "verifier_type", "status", "required_inputs", "required_outputs"]
+HELD_OUT_PREDICTION_COLUMNS = ["prediction_id", "model_id", "observable", "material_family", "doping_or_parameter", "status"]
+MEETING_TOOL_CALL_COLUMNS = ["tool_call_id", "tool_name", "status", "artifact_dir", "summary"]
+ACTION_EXECUTION_COLUMNS = ["selected_action_id", "tool_id", "status", "expected_information_gain", "priority", "policy_status", "execution_mode", "duration_ms", "generated_artifacts", "verifier_count", "claim_dag_checks", "claim_dag_blockers", "optimizer_new_actions", "bundle_dir"]
+DOMAIN_PACK_COLUMNS = ["domain_id", "version", "task_types", "tool_count", "benchmark_count", "guardrails"]
+OPTIMIZER_PORTFOLIO_COLUMNS = ["hypothesis_id", "role", "rationale", "pareto_frontier"]
+FAILURE_MEMORY_COLUMNS = ["failure_id", "hypothesis_id", "domain_id", "failure_mode", "lesson"]
+INFORMATION_GAIN_COLUMNS = ["action_id", "hypothesis_id", "domain_id", "action_type", "tool_id", "expected_information_gain", "success_probability", "feasibility", "cost", "priority", "execution_status", "rationale"]
+V3_SNAPSHOT_COLUMNS = ["snapshot_version", "claim_dag_hash", "obligation_graph_hash", "artifact_manifest_hash", "candidate_archive_version", "failure_memory_version"]
+V3_OBLIGATION_COLUMNS = ["obligation_id", "statement", "obligation_type", "status", "required_capabilities", "required_certificate_types", "current_blocker", "generalization_requirement"]
+V3_TRANSITION_COLUMNS = ["transition_id", "claim_id", "previous_status", "requested_status", "resulting_status", "decision", "rejection_reasons", "certificate_ids", "actor_type"]
+V3_CERTIFICATE_COLUMNS = ["certificate_id", "certificate_type", "claim_id", "obligation_id", "status", "generalization_label", "artifact_ids", "checksum_sha256"]
+V3_TOOL_GAP_COLUMNS = ["tool_gap_id", "obligation_id", "missing_capability", "status", "affected_claim_ids"]
+V3_TOOL_BUILD_COLUMNS = ["tool_build_id", "tool_contract_id", "tool_id", "status", "security_status", "unit_test_status", "scientific_fixture_status", "registration_decision"]
+V3_CANDIDATE_COLUMNS = ["candidate_id", "candidate_type", "mutation_strategy", "behavior_descriptors", "hard_constraint_results", "scores", "certificate_status"]
+V3_DISPUTE_COLUMNS = ["dispute_id", "topic", "authoritative_result", "adjudication_reason", "followup_action"]
+V3_INDEPENDENT_COLUMNS = ["independent_verification_id", "certificate_id", "implementation_path", "status", "discrepancies"]
 
 
 def _table(records: list[dict[str, object]], columns: list[str]) -> list[list[object]]:
@@ -624,6 +951,39 @@ def _cell(value: object) -> object:
     if value is None:
         return ""
     return value
+
+
+def _frontend_optimizer_fixture() -> list[dict[str, object]]:
+    return [
+        {
+            "id": "hyp-frontier-mixed",
+            "title": "Artifact-backed mixed-model branch",
+            "core_claim": "A mixed phonon and correlated-hopping model is viable only where executable solver artifacts show a stable gap and closed energy ledger.",
+            "assumptions": ["Hamiltonian terms are explicit", "energy ledger is artifact-backed"],
+            "testable_predictions": ["phase scan contains stable mixed points", "held-out material comparison remains blocked until data readiness passes"],
+            "falsification_criteria": ["gap equation verifier fails", "phase2 readiness remains blocked after reviewed data promotion"],
+            "supporting_evidence": ["phase1_minimal_bcs_tool/base_solution.json", "phase1_minimal_bcs_tool/energy_ledger.json"],
+            "required_tools": ["phase1_minimal_mixed_bcs_solver", "phase2_data_coverage_tool"],
+            "novelty_statement": "Uses hard-gated solver and data readiness rather than free-form discussion.",
+        },
+        {
+            "id": "hyp-cheap-kill",
+            "title": "Overbroad no-test branch",
+            "core_claim": "This mechanism is always true and can prove everything.",
+            "assumptions": [],
+            "testable_predictions": [],
+            "falsification_criteria": [],
+        },
+        {
+            "id": "hyp-contrarian-data",
+            "title": "Contrarian data-readiness branch",
+            "core_claim": "The material-level claim may remain inconclusive even if the minimal theory model is internally stable.",
+            "assumptions": ["LSCO observable definitions must overlap across doping", "figure-derived optical data require review"],
+            "testable_predictions": ["readiness gate stays blocked when optical or penetration-depth data lack provenance"],
+            "falsification_criteria": ["reviewed canonical data passes overlap, provenance, and grouped holdout gates"],
+            "required_tools": ["phase2_lsco_acquisition"],
+        },
+    ]
 
 
 def create_gradio_workbench(*, runs_dir: str | Path = "runs"):
@@ -675,6 +1035,29 @@ def create_gradio_workbench(*, runs_dir: str | Path = "runs"):
             service.report_text(run_dir),
         )
 
+    def run_minimal_bcs(project_path: str, run_id: str):
+        run_dir = service.run_minimal_bcs(project_path or None, run_id=run_id or "minimal-mixed-bcs", force=True)
+        validation_errors = service.validate_minimal_bcs(run_dir)
+        validation = "valid" if not validation_errors else "\n".join(validation_errors)
+        return (
+            run_dir,
+            validation,
+            service.minimal_bcs_hamiltonian(run_dir),
+            service.minimal_bcs_solution_method(run_dir),
+            service.minimal_bcs_base_solution(run_dir),
+            service.minimal_bcs_energy_ledger(run_dir),
+            service.minimal_bcs_phase_summary(run_dir),
+            _table(service.minimal_bcs_comparison_rows(run_dir), MINIMAL_BCS_COMPARISON_COLUMNS),
+            _table(service.minimal_bcs_phase_rows(run_dir), MINIMAL_BCS_PHASE_COLUMNS),
+            _table(service.minimal_bcs_verifier_task_rows(run_dir), MINIMAL_BCS_VERIFIER_TASK_COLUMNS),
+            _table(service.minimal_bcs_verifier_result_rows(run_dir), MINIMAL_BCS_VERIFIER_RESULT_COLUMNS),
+            _table(service.phase2_observation_rows(run_dir), PHASE2_OBSERVATION_COLUMNS),
+            _table(service.phase2_fit_rows(run_dir), PHASE2_FIT_COLUMNS),
+            service.phase2_evaluation(run_dir),
+            service.phase2_connection_plan(run_dir),
+            service.report_text(run_dir),
+        )
+
     def validate(run_dir: str) -> str:
         errors = service.validate_atomic(run_dir) if (Path(run_dir) / "atomic_benchmark_metrics.json").exists() else service.validate(run_dir)
         return "valid" if not errors else "\n".join(errors)
@@ -714,19 +1097,60 @@ def create_gradio_workbench(*, runs_dir: str | Path = "runs"):
             service.claim_dag_mermaid(run_dir),
         )
 
-    def live_meeting(run_dir: str, question: str, rounds: int, live_model: bool):
+    def run_v3_demo(run_id: str):
+        run_dir = service.run_v3_proof_search_demo(run_id=run_id or "v3-proof-search-demo", force=True)
+        errors = service.validate_v3_proof_search(run_dir)
+        return inspect_v3(run_dir, validation_override="valid" if not errors else "\n".join(errors))
+
+    def inspect_v3(run_dir: str, validation_override: str | None = None):
+        validation = validation_override
+        if validation is None:
+            errors = service.validate_v3_proof_search(run_dir)
+            validation = "valid" if not errors else "\n".join(errors)
+        final = service.v3_final_adjudication(run_dir)
+        summary_path = Path(run_dir) / "run_summary.md"
+        summary = summary_path.read_text(encoding="utf-8") if summary_path.exists() else ""
+        return (
+            run_dir,
+            validation,
+            final,
+            _table(service.v3_snapshot_rows(run_dir), V3_SNAPSHOT_COLUMNS),
+            _table(service.v3_obligation_rows(run_dir), V3_OBLIGATION_COLUMNS),
+            _table(service.v3_claim_transition_rows(run_dir), V3_TRANSITION_COLUMNS),
+            _table(service.v3_certificate_rows(run_dir), V3_CERTIFICATE_COLUMNS),
+            _table(service.v3_tool_gap_rows(run_dir), V3_TOOL_GAP_COLUMNS),
+            _table(service.v3_tool_build_rows(run_dir), V3_TOOL_BUILD_COLUMNS),
+            _table(service.v3_candidate_archive_rows(run_dir), V3_CANDIDATE_COLUMNS),
+            _table(service.v3_state_dispute_rows(run_dir), V3_DISPUTE_COLUMNS),
+            _table(service.v3_independent_verification_rows(run_dir), V3_INDEPENDENT_COLUMNS),
+            summary,
+        )
+
+    def live_meeting(run_dir: str, question: str, rounds: int, live_model: bool, phase2_data_path: str):
         target = run_dir.strip() or str(Path(runs_dir) / f"meeting-{_slug(question or 'research-question')}")
         final_status: dict[str, object] = {}
         transcript = ""
         rows: list[dict[str, object]] = []
         calls: list[dict[str, object]] = []
-        for transcript, rows, calls, final_status in service.stream_live_agent_meeting(target, question, live_model=live_model, max_rounds=int(rounds or 2), force=True):
+        for transcript, rows, calls, final_status in service.stream_live_agent_meeting(target, question, live_model=live_model, max_rounds=int(rounds or 2), force=True, phase2_data_path=phase2_data_path or None):
             yield (
                 target,
                 transcript,
                 _table(rows, MEETING_MESSAGE_COLUMNS),
                 _table(calls, PROVIDER_CALL_COLUMNS),
                 final_status,
+                service.live_agent_tool_context(target),
+                _table(service.live_agent_tool_call_rows(target), MEETING_TOOL_CALL_COLUMNS),
+                service.live_agent_latest_action_state(target),
+                _table(service.live_agent_action_rows(target), ACTION_EXECUTION_COLUMNS),
+                _table(service.live_agent_bcs_verifier_rows(target), MINIMAL_BCS_VERIFIER_RESULT_COLUMNS),
+                _table(service.live_agent_phase2_observation_rows(target), PHASE2_OBSERVATION_COLUMNS),
+                _table(service.live_agent_phase2_missing_rows(target), PHASE2_MISSING_COLUMNS),
+                _table(service.live_agent_phase2_candidate_source_rows(target), PHASE2_SOURCE_COLUMNS),
+                {},
+                [],
+                [],
+                [],
                 "validating...",
             )
         errors = service.validate_live_agent_meeting(target)
@@ -736,12 +1160,70 @@ def create_gradio_workbench(*, runs_dir: str | Path = "runs"):
             _table(service.live_agent_message_rows(target), MEETING_MESSAGE_COLUMNS),
             _table(service.live_agent_provider_rows(target), PROVIDER_CALL_COLUMNS),
             final_status,
+            service.live_agent_tool_context(target),
+            _table(service.live_agent_tool_call_rows(target), MEETING_TOOL_CALL_COLUMNS),
+            service.live_agent_latest_action_state(target),
+            _table(service.live_agent_action_rows(target), ACTION_EXECUTION_COLUMNS),
+            _table(service.live_agent_bcs_verifier_rows(target), MINIMAL_BCS_VERIFIER_RESULT_COLUMNS),
+            _table(service.live_agent_phase2_observation_rows(target), PHASE2_OBSERVATION_COLUMNS),
+            _table(service.live_agent_phase2_missing_rows(target), PHASE2_MISSING_COLUMNS),
+            _table(service.live_agent_phase2_candidate_source_rows(target), PHASE2_SOURCE_COLUMNS),
+            service.science_progress_diagnostic(target),
+            _table(service.candidate_model_sketch_rows(target), MODEL_SKETCH_COLUMNS),
+            _table(service.verifier_task_rows(target), MEETING_VERIFIER_TASK_COLUMNS),
+            _table(service.held_out_prediction_rows(target), HELD_OUT_PREDICTION_COLUMNS),
             "valid" if not errors else "\n".join(errors),
         )
 
     def targeted_repair(run_dir: str, claim_id: str, reason: str):
         result = service.run_targeted_repair(run_dir, claim_id=claim_id, reason=reason)
         return result, service.claim_dag_mermaid(run_dir)
+
+    def phase2_acquire(mode: str, run_id: str, canonical_dataset: str, live_network: bool, auto_promote: bool, max_queries: int, max_results: int):
+        run_dir = service.run_phase2_acquisition(
+            mode=mode or "fixture",
+            run_id=run_id or "phase2-lsco-acquisition",
+            canonical_dataset=canonical_dataset or "data/phase2_lsco.csv",
+            live_network=bool(live_network),
+            auto_promote=bool(auto_promote),
+            max_queries=int(max_queries or 8),
+            max_results_per_query=int(max_results or 5),
+        )
+        errors = service.validate_phase2_acquisition(run_dir)
+        return (
+            run_dir,
+            service.phase2_acquisition_status(run_dir),
+            _table(service.phase2_acquisition_candidate_sources(run_dir), PHASE2_ACQ_SOURCE_COLUMNS),
+            _table(service.phase2_acquisition_imported_rows(run_dir), PHASE2_ACQ_ROW_COLUMNS),
+            _table(service.phase2_acquisition_data_gaps(run_dir), PHASE2_MISSING_COLUMNS),
+            _table(service.phase2_acquisition_digitization_queue(run_dir), PHASE2_DIGITIZATION_COLUMNS),
+            service.phase2_acquisition_readiness(run_dir),
+            "valid" if not errors else "\n".join(errors),
+        )
+
+    def phase2_review_and_promote(run_dir: str, candidate_row_id: str, decision: str, rationale: str, canonical_dataset: str):
+        review_path = service.phase2_review_candidate_row(run_dir, candidate_row_id=candidate_row_id, decision=decision or "approve", rationale=rationale)
+        promotion_path = ""
+        if decision == "approve":
+            promotion_path = service.phase2_promote_reviewed_rows(run_dir, canonical_dataset=canonical_dataset or "data/phase2_lsco.csv")
+        return (
+            f"review={review_path}\npromotion={promotion_path}",
+            _table(service.phase2_acquisition_imported_rows(run_dir), PHASE2_ACQ_ROW_COLUMNS),
+            service.phase2_acquisition_readiness(run_dir),
+        )
+
+    def generic_acquisition(domain_id: str, question: str, task_type: str, mode: str, run_id: str, live_network: bool):
+        run_dir = service.run_generic_acquisition(domain_id=domain_id or "magnetic_transport_crse", question=question, task_type=task_type or "data_extraction", mode=mode or "fixture", run_id=run_id, live_network=bool(live_network), force=True)
+        return run_dir, service.domain_pack_inspect(domain_id or "magnetic_transport_crse")
+
+    def optimizer_v2(domain_id: str, run_id: str):
+        run_dir = service.run_hypothesis_optimizer_v2(domain_id=domain_id or "general", run_id=run_id or "optimizer-v2", force=True)
+        return (
+            run_dir,
+            _table(service.hypothesis_optimizer_portfolio_rows(run_dir), OPTIMIZER_PORTFOLIO_COLUMNS),
+            _table(service.failure_memory_rows(run_dir), FAILURE_MEMORY_COLUMNS),
+            _table(service.information_gain_rows(run_dir), INFORMATION_GAIN_COLUMNS),
+        )
 
     with gr.Blocks(title="Coscientist Discovery Workbench") as app:
         gr.Markdown("# Coscientist Discovery Workbench\nOffline deterministic mode. Live model/network controls are disabled by default.")
@@ -790,6 +1272,66 @@ def create_gradio_workbench(*, runs_dir: str | Path = "runs"):
             sc_materials = gr.Dataframe(headers=SC_MATERIAL_COLUMNS, label="Material mappings")
             sc_identifiability = gr.Dataframe(headers=SC_IDENTIFIABILITY_COLUMNS, label="Identifiability")
             sc_report = gr.Textbox(lines=24, label="Superconductivity report")
+        with gr.Tab("Phase 1 BCS Solver"):
+            minimal_project = gr.Textbox(value="", label="Optional minimal BCS project JSON")
+            minimal_run_id = gr.Textbox(value="minimal-mixed-bcs", label="Run ID")
+            minimal_button = gr.Button("Run Minimal BCS Solver")
+            minimal_run_dir = gr.Textbox(label="Run directory")
+            minimal_validation = gr.Textbox(label="Validation")
+            minimal_hamiltonian = gr.JSON(label="Hamiltonian terms")
+            minimal_method = gr.JSON(label="Gap / number equations and solver method")
+            minimal_base = gr.JSON(label="Base solution")
+            minimal_energy = gr.JSON(label="Energy ledger")
+            minimal_phase_summary = gr.JSON(label="Phase diagram summary")
+            minimal_comparison = gr.Dataframe(headers=MINIMAL_BCS_COMPARISON_COLUMNS, label="Four-model comparison")
+            minimal_phase = gr.Dataframe(headers=MINIMAL_BCS_PHASE_COLUMNS, label="Parameter scan / phase diagram points")
+            minimal_verifier_tasks = gr.Dataframe(headers=MINIMAL_BCS_VERIFIER_TASK_COLUMNS, label="Executable verifier tasks")
+            minimal_verifier_results = gr.Dataframe(headers=MINIMAL_BCS_VERIFIER_RESULT_COLUMNS, label="Executable verifier results")
+            phase2_observations = gr.Dataframe(headers=PHASE2_OBSERVATION_COLUMNS, label="Phase 2 existing-data observations")
+            phase2_fits = gr.Dataframe(headers=PHASE2_FIT_COLUMNS, label="Phase 2 model fit / held-out comparison")
+            phase2_evaluation = gr.JSON(label="Phase 2 held-out evaluation")
+            phase2_connection_plan = gr.Textbox(lines=18, label="Phase 2 database connection plan", show_copy_button=True)
+            minimal_report = gr.Textbox(lines=28, label="Copyable minimal BCS report", show_copy_button=True)
+        with gr.Tab("Phase 2 Data Acquisition"):
+            phase2_acq_mode = gr.Dropdown(["fixture", "existing", "live"], value="fixture", label="Acquisition mode")
+            phase2_acq_live = gr.Checkbox(value=False, label="Allow live network")
+            phase2_acq_promote = gr.Checkbox(value=False, label="Auto-promote high-confidence rows")
+            phase2_acq_run_id = gr.Textbox(value="phase2-lsco-acquisition", label="Run ID")
+            phase2_acq_canonical = gr.Textbox(value="data/phase2_lsco.csv", label="Canonical LSCO dataset")
+            phase2_acq_queries = gr.Slider(1, 20, value=8, step=1, label="Query count")
+            phase2_acq_results = gr.Slider(1, 20, value=5, step=1, label="Paper limit per query")
+            phase2_acq_button = gr.Button("Run Phase 2 Acquisition")
+            phase2_acq_run_dir = gr.Textbox(label="Run directory")
+            phase2_acq_status = gr.JSON(label="Live acquisition status / summary")
+            phase2_acq_sources = gr.Dataframe(headers=PHASE2_ACQ_SOURCE_COLUMNS, label="Candidate sources")
+            phase2_acq_rows = gr.Dataframe(headers=PHASE2_ACQ_ROW_COLUMNS, label="Imported / staged rows")
+            phase2_acq_gaps = gr.Dataframe(headers=PHASE2_MISSING_COLUMNS, label="Data gaps")
+            phase2_acq_digitization = gr.Dataframe(headers=PHASE2_DIGITIZATION_COLUMNS, label="Figure digitization queue")
+            phase2_acq_readiness = gr.JSON(label="Phase 2 readiness / comparison trigger")
+            phase2_acq_validation = gr.Textbox(label="Validation")
+            phase2_review_row_id = gr.Textbox(label="Candidate row ID for review")
+            phase2_review_decision = gr.Dropdown(["approve", "reject"], value="approve", label="Review decision")
+            phase2_review_rationale = gr.Textbox(lines=2, label="Review rationale")
+            phase2_review_button = gr.Button("Review Candidate Row")
+            phase2_review_output = gr.Textbox(label="Review / promotion output")
+        with gr.Tab("Domain Packs / Optimizer V2"):
+            domain_selector = gr.Dropdown(["superconductivity_lsco", "magnetic_transport_crse", "mathematical_physics", "xrd_phase_identification"], value="superconductivity_lsco", label="Domain Pack")
+            domain_rows = gr.Dataframe(value=_table(service.domain_pack_rows(), DOMAIN_PACK_COLUMNS), headers=DOMAIN_PACK_COLUMNS, label="Registered Domain Packs")
+            domain_inspect = gr.JSON(label="Domain Pack manifest")
+            generic_question = gr.Textbox(lines=3, label="Generic acquisition question")
+            generic_task_type = gr.Dropdown(["data_extraction", "material_comparison", "theory_derivation", "numerical_modeling", "experiment_selection", "phase_identification", "hidden_answer_benchmark"], value="data_extraction", label="Task type")
+            generic_mode = gr.Dropdown(["fixture", "existing", "live"], value="fixture", label="Mode")
+            generic_live = gr.Checkbox(value=False, label="Allow live network")
+            generic_run_id = gr.Textbox(value="", label="Run ID")
+            generic_button = gr.Button("Run Generic Acquisition")
+            generic_run_dir = gr.Textbox(label="Generic acquisition run directory")
+            optimizer_domain = gr.Textbox(value="superconductivity_lsco", label="Optimizer domain")
+            optimizer_run_id = gr.Textbox(value="optimizer-v2-workbench", label="Optimizer run ID")
+            optimizer_button = gr.Button("Run Hypothesis Optimizer V2")
+            optimizer_run_dir = gr.Textbox(label="Optimizer run directory")
+            optimizer_portfolio = gr.Dataframe(headers=OPTIMIZER_PORTFOLIO_COLUMNS, label="Pareto portfolio")
+            optimizer_failures = gr.Dataframe(headers=FAILURE_MEMORY_COLUMNS, label="Failure memory")
+            optimizer_eig = gr.Dataframe(headers=INFORMATION_GAIN_COLUMNS, label="Expected information gain queue")
         with gr.Tab("Candidates"):
             candidates = gr.Dataframe(headers=CANDIDATE_COLUMNS, label="Candidate explorer")
         with gr.Tab("Verifier Inspector"):
@@ -819,17 +1361,48 @@ def create_gradio_workbench(*, runs_dir: str | Path = "runs"):
             claim_dag_edges = gr.Dataframe(headers=CLAIM_DAG_EDGE_COLUMNS, label="Dependencies")
             claim_dag_gate = gr.Dataframe(headers=CLAIM_DAG_GATE_COLUMNS, label="Deterministic total gate")
             claim_dag_graph = gr.Textbox(lines=18, label="Mermaid graph", show_copy_button=True)
+        with gr.Tab("V3 Proof Search"):
+            v3_run_id = gr.Textbox(value="v3-proof-search-demo", label="Run ID")
+            v3_run_button = gr.Button("Run V3 Proof-Carrying Demo")
+            v3_existing_run = gr.Textbox(label="Existing V3 run directory")
+            v3_inspect_button = gr.Button("Inspect Existing V3 Run")
+            v3_run_dir = gr.Textbox(label="V3 run directory")
+            v3_validation = gr.Textbox(label="Validation")
+            v3_final = gr.JSON(label="Final adjudication")
+            v3_snapshots = gr.Dataframe(headers=V3_SNAPSHOT_COLUMNS, label="Scientific State Snapshot")
+            v3_obligations = gr.Dataframe(headers=V3_OBLIGATION_COLUMNS, label="Proof Obligation Board")
+            v3_transitions = gr.Dataframe(headers=V3_TRANSITION_COLUMNS, label="Proof-Carrying Claim Inspector")
+            v3_certificates = gr.Dataframe(headers=V3_CERTIFICATE_COLUMNS, label="Scientific Certificates")
+            v3_tool_gaps = gr.Dataframe(headers=V3_TOOL_GAP_COLUMNS, label="Tool Gap Queue")
+            v3_tool_builds = gr.Dataframe(headers=V3_TOOL_BUILD_COLUMNS, label="Tool Build Records")
+            v3_candidates = gr.Dataframe(headers=V3_CANDIDATE_COLUMNS, label="Candidate Archive")
+            v3_disputes = gr.Dataframe(headers=V3_DISPUTE_COLUMNS, label="State Disputes")
+            v3_independent = gr.Dataframe(headers=V3_INDEPENDENT_COLUMNS, label="Independent Verification")
+            v3_summary = gr.Textbox(lines=18, label="Run summary", show_copy_button=True)
         with gr.Tab("Live Agent Room"):
             meeting_run_dir = gr.Textbox(label="Run directory", placeholder="Leave blank to create a new meeting run directory")
             meeting_question = gr.Textbox(lines=4, label="Research question")
             meeting_rounds = gr.Slider(1, 8, value=2, step=1, label="Meeting rounds")
-            meeting_live = gr.Checkbox(value=False, label="Use live model if credentials are configured")
+            meeting_live = gr.Checkbox(value=False, label="Require live OpenRouter model (no mock fallback)")
+            meeting_phase2_data = gr.Textbox(label="Optional Phase 2 doping-series CSV/JSONL path")
             meeting_button = gr.Button("Start Agent Meeting")
             meeting_out_dir = gr.Textbox(label="Meeting run directory")
             meeting_transcript = gr.Textbox(lines=26, label="Streaming transcript", show_copy_button=True)
             meeting_messages = gr.Dataframe(headers=MEETING_MESSAGE_COLUMNS, label="Agent messages")
             meeting_calls = gr.Dataframe(headers=PROVIDER_CALL_COLUMNS, label="Provider calls")
             meeting_status = gr.JSON(label="Meeting status")
+            meeting_tool_context = gr.JSON(label="Executed tool context")
+            meeting_tool_calls = gr.Dataframe(headers=MEETING_TOOL_CALL_COLUMNS, label="Meeting tool calls")
+            meeting_action_state = gr.JSON(label="Closed-loop action state")
+            meeting_actions = gr.Dataframe(headers=ACTION_EXECUTION_COLUMNS, label="Closed-loop action executions")
+            meeting_bcs_verifiers = gr.Dataframe(headers=MINIMAL_BCS_VERIFIER_RESULT_COLUMNS, label="BCS executable verifier results")
+            meeting_phase2_observations = gr.Dataframe(headers=PHASE2_OBSERVATION_COLUMNS, label="Phase 2 imported observations")
+            meeting_phase2_missing = gr.Dataframe(headers=PHASE2_MISSING_COLUMNS, label="Phase 2 missing observables")
+            meeting_phase2_sources = gr.Dataframe(headers=PHASE2_SOURCE_COLUMNS, label="Phase 2 candidate data sources")
+            meeting_science_gate = gr.JSON(label="Science progress gate")
+            meeting_models = gr.Dataframe(headers=MODEL_SKETCH_COLUMNS, label="Candidate model sketches")
+            meeting_verifier_tasks = gr.Dataframe(headers=MEETING_VERIFIER_TASK_COLUMNS, label="Verifier task queue")
+            meeting_predictions = gr.Dataframe(headers=HELD_OUT_PREDICTION_COLUMNS, label="Held-out prediction queue")
             meeting_validation = gr.Textbox(label="Validation")
         with gr.Tab("Targeted Repair"):
             repair_run_dir = gr.Textbox(label="Run directory")
@@ -855,11 +1428,86 @@ def create_gradio_workbench(*, runs_dir: str | Path = "runs"):
         run_button.click(run_atomic, inputs=[project, run_id], outputs=[run_dir, metrics, candidates, verifiers, report, copyable])
         campaign_button.click(run_campaign, inputs=[campaign_project, run_id], outputs=[run_dir, metrics, sources, identifiability, report])
         sc_button.click(run_superconductivity, inputs=[sc_project, sc_run_id], outputs=[sc_run_dir, sc_validation, sc_scores, sc_energy, sc_optical, sc_materials, sc_identifiability, sc_report])
+        minimal_button.click(
+            run_minimal_bcs,
+            inputs=[minimal_project, minimal_run_id],
+            outputs=[
+                minimal_run_dir,
+                minimal_validation,
+                minimal_hamiltonian,
+                minimal_method,
+                minimal_base,
+                minimal_energy,
+                minimal_phase_summary,
+                minimal_comparison,
+                minimal_phase,
+                minimal_verifier_tasks,
+                minimal_verifier_results,
+                phase2_observations,
+                phase2_fits,
+                phase2_evaluation,
+                phase2_connection_plan,
+                minimal_report,
+            ],
+        )
+        phase2_acq_button.click(
+            phase2_acquire,
+            inputs=[phase2_acq_mode, phase2_acq_run_id, phase2_acq_canonical, phase2_acq_live, phase2_acq_promote, phase2_acq_queries, phase2_acq_results],
+            outputs=[phase2_acq_run_dir, phase2_acq_status, phase2_acq_sources, phase2_acq_rows, phase2_acq_gaps, phase2_acq_digitization, phase2_acq_readiness, phase2_acq_validation],
+        )
+        phase2_review_button.click(
+            phase2_review_and_promote,
+            inputs=[phase2_acq_run_dir, phase2_review_row_id, phase2_review_decision, phase2_review_rationale, phase2_acq_canonical],
+            outputs=[phase2_review_output, phase2_acq_rows, phase2_acq_readiness],
+        )
+        domain_selector.change(lambda domain_id: service.domain_pack_inspect(domain_id), inputs=[domain_selector], outputs=[domain_inspect])
+        generic_button.click(generic_acquisition, inputs=[domain_selector, generic_question, generic_task_type, generic_mode, generic_run_id, generic_live], outputs=[generic_run_dir, domain_inspect])
+        optimizer_button.click(optimizer_v2, inputs=[optimizer_domain, optimizer_run_id], outputs=[optimizer_run_dir, optimizer_portfolio, optimizer_failures, optimizer_eig])
         validate_button.click(validate, inputs=[run_dir], outputs=[validation])
         inspect_button.click(inspect_search_os, inputs=[run_dir], outputs=[elo, tournament, strategy, allocation, verifiers, reproduction, tasks, checkpoint])
         ledger_button.click(inspect_ledgers, inputs=[run_dir], outputs=[claims, predictions, routing, discrepancies])
         claim_dag_button.click(build_claim_dag, inputs=[claim_dag_run_dir, claim_dag_candidate], outputs=[claim_dag_db, claim_dag_validation, claim_dag_nodes, claim_dag_edges, claim_dag_gate, claim_dag_graph])
-        meeting_button.click(live_meeting, inputs=[meeting_run_dir, meeting_question, meeting_rounds, meeting_live], outputs=[meeting_out_dir, meeting_transcript, meeting_messages, meeting_calls, meeting_status, meeting_validation])
+        v3_outputs = [
+            v3_run_dir,
+            v3_validation,
+            v3_final,
+            v3_snapshots,
+            v3_obligations,
+            v3_transitions,
+            v3_certificates,
+            v3_tool_gaps,
+            v3_tool_builds,
+            v3_candidates,
+            v3_disputes,
+            v3_independent,
+            v3_summary,
+        ]
+        v3_run_button.click(run_v3_demo, inputs=[v3_run_id], outputs=v3_outputs)
+        v3_inspect_button.click(inspect_v3, inputs=[v3_existing_run], outputs=v3_outputs)
+        meeting_button.click(
+            live_meeting,
+            inputs=[meeting_run_dir, meeting_question, meeting_rounds, meeting_live, meeting_phase2_data],
+            outputs=[
+                meeting_out_dir,
+                meeting_transcript,
+                meeting_messages,
+                meeting_calls,
+                meeting_status,
+                meeting_tool_context,
+                meeting_tool_calls,
+                meeting_action_state,
+                meeting_actions,
+                meeting_bcs_verifiers,
+                meeting_phase2_observations,
+                meeting_phase2_missing,
+                meeting_phase2_sources,
+                meeting_science_gate,
+                meeting_models,
+                meeting_verifier_tasks,
+                meeting_predictions,
+                meeting_validation,
+            ],
+        )
         repair_button.click(targeted_repair, inputs=[repair_run_dir, repair_claim_id, repair_reason], outputs=[repair_result, repair_graph])
         feedback_button.click(feedback, inputs=[run_dir, candidate_id, decision, rationale], outputs=[feedback_path])
     return app

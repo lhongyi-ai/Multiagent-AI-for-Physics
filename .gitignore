@@ -11,3 +11,13 @@ dist/
 build/
 *.egg-info/
 runs/
+*.sqlite
+claim_dag.json
+atomic_claims.jsonl
+claim_checks.jsonl
+claim_contradictions.jsonl
+claim_dependencies.jsonl
+formal_claim.json
+independent_checks.jsonl
+total_gate_result.json
+validation_blockers.jsonl
