@@ -1,1 +1,0 @@
-{"claim_id": "claim-candidate-competitor", "contradiction_id": "contra-claim-candidate-competitor", "description": "Competitor equivalence remains unresolved; this blocks a mechanism-winning claim.", "resolved": false, "schema_version": "v23", "severity": "major", "source_artifact_id": "adversarial_tests.jsonl"}
